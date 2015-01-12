@@ -27,16 +27,13 @@
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
 
-token_stream_t tsStack = NULL; // struct token_stream *ts_stack
-command_t *cStack = NULL; // struct command **c_stack
-
+token_stream_t tsStack = NULL; 
+command_t *cStack = NULL;
 void ts_push(token_stream_t tStream);
 enum token_type ts_peek();
 token_stream_t ts_pop();
-
 void c_push(command_t cmd, int *top, size_t *size);
 command_t c_pop(int *top);
-
 int stack_precedence(enum token_type type);
 int stream_precedence(enum token_type type);
 
