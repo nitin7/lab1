@@ -17,6 +17,7 @@
 
 #include "command.h"
 #include "command-internals.h"
+#include "alloc.h"
 
 #include <error.h>
 
@@ -26,13 +27,91 @@
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
 
+enum type_of_token
+{
+
+}
+
+typedef struct token *token_t;
+typedef struct token_stream *token_stream_t;
+
+struct token 
+{
+  char* data;
+  enum type_of_token type;
+  token_t next;
+};
+
+struct token_stream 
+{
+  token_t head;
+  token_stream_t next;
+};
+
+char*
+read_bytes (int (*get_next_byte) (void *),
+         void *get_next_byte_argument)
+{
+  size_t n, buf_size;
+  char next_byte;
+
+  buf_size = 1024;
+  n = 0;
+
+  char *buf = (char *) checked_malloc(sizeof(char) * buf_size);
+
+  char next_byte; ;
+
+  while ((next_byte = get_next_byte(get_next_byte_argument)) != EOF) 
+  {
+    //case where next_byte is a comment - ignore the rest of the line
+    if (next_byte == '#') 
+    {
+      next_byte = get_next_byte(get_next_byte_argument);
+      while (next)byte != '\n' && next_byte != EOF)
+              next_byte = get_next_byte(get_next_byte_argument);
+    }
+
+    if (next_byte != EOF) {
+      buf[n] = next_byte;
+      n++;
+
+      if (n == buf_size)
+        buf = checked_grow_alloc(buf, &buf_size);
+    }
+  }
+
+  if (n < buf_size - 1)
+  {
+    buf[n] = '\0';
+  }
+  else 
+  {
+    buf = (char *) checked_grow_alloc(buf, &buf_size);
+    buf[n] = '\0';
+  }
+  
+  return buf;
+}
+
+token_stream_t
+tokenize_bytes(char* buf) 
+{
+
+
+
+}
+
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
 		     void *get_next_byte_argument)
 {
-  /* FIXME: Replace this with your implementation.  You may need to
-     add auxiliary functions and otherwise modify the source code.
-     You can also use external functions defined in the GNU C Library.  */
+
+  char* buf = read_bytes(get_next_byte, get_next_byte_argument);
+
+  token_stream_t ts = tokenize_bytes(buf);
+
+
   error (1, 0, "command reading not yet implemented");
   return 0;
 }
