@@ -160,7 +160,6 @@ tokenize_bytes(char* buf)
     }
     else if (type = WORD_TOKEN)
     {
-
       ts->m_token.t_word = (char *) checked_malloc(sizeof(char) * nChars + 1);
       
       for (int k = 0; k < nChars; k++)
@@ -169,31 +168,28 @@ tokenize_bytes(char* buf)
       ts->m_token.t_word[nChars] = '\0';
 
       if (strcmp(ts->m_token.t_word, "if") == 0) {
-        ts->m_token.type = IF;
+        ts->m_token.type = IF_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "then") == 0) {
-        ts->m_token.type = THEN;
+        ts->m_token.type = THEN_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "else") == 0) {
-        ts->m_token.type = ELSE;
+        ts->m_token.type = ELSE_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "fi") == 0) {
-        ts->m_token.type = FI;
+        ts->m_token.type = FI_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "while") == 0) {
-        ts->m_token.type = WHILE;
+        ts->m_token.type = WHILE_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "do") == 0) {
-        ts->m_token.type = DO;
+        ts->m_token.type = DO_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "done") == 0) {
-        ts->m_token.type = DONE;
+        ts->m_token.type = DONE_TOKEN;
       }
       else if (strcmp(ts->m_token.t_word, "until") == 0) {
-        ts->m_token.type = DONE;
-      }
-      else {
-        ts->m_token.type = SIMPLE;
+        ts->m_token.type = UNTIL_TOKEN;
       }
     }
     else
