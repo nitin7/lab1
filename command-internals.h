@@ -26,6 +26,27 @@ enum command_type
     WHILE_COMMAND,	 // while A do B done
   };
 
+enum token_type
+  {
+    IF,
+    FI,
+    ELSE,
+    THEN,
+    WHILE,
+    DO,
+    DONE,
+    UNTIL,
+    SEMICOLON,
+    PIPE,
+    OPEN_PAREN,
+    CLOSE_PAREN,
+    LESS_THAN,
+    GREATER_THAN,
+    WORD,
+    NEWLINE,
+    OTHER
+  };
+
 // Data associated with a command.
 struct command
 {
@@ -47,4 +68,30 @@ struct command
     // Only IF_COMMAND uses all three entries.
     struct command *command[3];
   } u;
+};
+
+struct command_stream
+{
+  //change these two later
+  int number;
+  int iterator;
+
+  command_t node;
+  command_node_t next;
+  command_node_t prev;
+};
+
+struct token 
+{
+  char* data;
+  enum type_of_token type;
+  int line_no;
+  int token_len;
+};
+
+struct token_stream 
+{
+  token_t node;
+  token_stream_t next;
+  token_stream_t prev;
 };
