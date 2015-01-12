@@ -26,27 +26,6 @@ enum command_type
     WHILE_COMMAND,	 // while A do B done
   };
 
-enum token_type
-  {
-    IF,
-    FI,
-    ELSE,
-    THEN,
-    WHILE,
-    DO,
-    DONE,
-    UNTIL,
-    SEMICOLON,
-    PIPE,
-    OPEN_PAREN,
-    CLOSE_PAREN,
-    LESS_THAN,
-    GREATER_THAN,
-    WORD,
-    NEWLINE,
-    OTHER
-  };
-
 // Data associated with a command.
 struct command
 {
@@ -72,26 +51,58 @@ struct command
 
 struct command_stream
 {
-  //change these two later
   int number;
   int iterator;
 
-  command_t node;
-  command_node_t next;
-  command_node_t prev;
+  struct command *m_command;
+  struct command_stream *prev;
+  struct command_stream *next;
 };
 
-struct token 
+///////////////////////////////////////////////////////////////////////////////
+// TOKEN
+///////////////////////////////////////////////////////////////////////////////
+
+enum token_type
 {
-  char* data;
-  enum type_of_token type;
-  int line_no;
-  int token_len;
+  WORD_TOKEN,           
+  SEMICOLON_TOKEN,
+  PIPE_TOKEN,
+  LEFT_PAREN_TOKEN,
+  RIGHT_PAREN_TOKEN,
+  LESS_TOKEN,  
+  GREATER_TOKEN,
+  IF_TOKEN,
+  THEN_TOKEN, 
+  ELSE_TOKEN,
+  FI_TOKEN, 
+  WHILE_TOKEN,
+  DO_TOKEN, 
+  DONE_TOKEN, 
+  UNTIL_TOKEN,
+  NEWLINE_TOKEN,
+  MISC_TOKEN,
+  UNKNOWN_TOKEN,
 };
 
-struct token_stream 
+struct token
 {
-  token_t node;
-  token_stream_t next;
-  token_stream_t prev;
+  enum token_type type;
+  char *t_word;
+  int length;
+  int line_num;
 };
+
+///////////////////////////////////////////////////////////////////////////////
+// TOKEN_STREAM
+///////////////////////////////////////////////////////////////////////////////
+
+struct token_stream
+{
+  struct token m_token;
+
+  struct token_stream *prev;
+  struct token_stream *next;
+};
+
+
