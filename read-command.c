@@ -39,7 +39,7 @@ read_bytes (int (*get_next_byte) (void *),
 
   char *buf = (char *) checked_malloc(sizeof(char) * buf_size);
 
-  char next_byte; ;
+  char next_byte;
 
   while ((next_byte = get_next_byte(get_next_byte_argument)) != EOF) 
   {
@@ -73,13 +73,155 @@ read_bytes (int (*get_next_byte) (void *),
   return buf;
 }
 
+int check_if_word(char c)
+{
+  if (isalnum(c) || (c == '!') || (c == '%') || (c == '!') || (c == '+') || (c == '-') || (c == ',') || (c == '.') || (c == '/') || (c == ':') || (c == '@') || (c == '^') ||  (c == '_')) 
+    return 1;
+
+  return 0;
+}
+
 token_stream_t
 tokenize_bytes(char* buf) 
 {
+  enum token_type type_of_token;
+  struct token_stream *head = NULL;
+  struct token_stream *cur = head;
 
+  //case where buffer empty
+  int i = 0;
+  int line = 1;
+  char ch;
+  while ((ch = buf[i]) != '\0') 
+  {
+    switch (ch)
+    {
+      //comments check
+      case '\n':
+        line++;
+        type = NEWLINE_TOKEN;
+        nextCh = buffer[i+i];
+        if (nextCh == '\n' && nextCh != '\0')
+        {
+          i++; 
+          continue; 
+        }
+        break;
+      case '\t':
+        i++;
+        continue;  
+        break; 
+      case ' ':
+        i++;
+        continue;
+        break;
+      case ';':
+        type = SEMICOLON_TOKEN;
+        break;
+      case '|':
+        type = PIPE_TOKEN;
+        break;
+      case '(':
+        type = LEFT_PAREN_TOKEN;
+        break;
+      case ')':
+        type = RIGHT_PAREN_TOKEN;
+        break;
+      case '>':
+        type = GREATER_TOKEN;
+        break;
+      case '<':
+        type = LESS_TOKEN;
+        break;                            
+      default:
+        type = UNKNOWN_TOKEN;
+    }
 
+    int nChars = 0;
+    int startChar = i;
 
+    if (check_if_word(ch) == 1)
+    {
+      while (is_word_char(buffer[nChars + 1 + i]) == 1)
+        nChars++;
+      type = WORD_TOKEN;
+      i+=nChars;
+    }
+
+    struct token_stream* ts = (struct token_stream *) checked_malloc(sizeof(struct token_stream));
+    ts->m_token.type = type;
+    ts->m_token.length = nChars;
+    ts->m_token.line_num = line;
+    //default initialize to null in command-internals.h
+    ts->prev = NULL;
+    ts->next = NULL;
+
+    if (type == NEWLINE_TOKEN)
+      ts->m_token.line_num--;
+    else if (type == UNKNOWN_TOKEN)
+    {
+      ts->m_token.t_word = NULL;
+      fprintf(stderr, "Error: found unknown token %c on line %i\n", ch, line);
+      exit(1);
+    }
+    else if (type = WORD_TOKEN)
+    {
+
+      ts->m_token.t_word = (char *) checked_malloc(sizeof(char) * nChars + 1);
+      
+      for (int k = 0; k < nChars; k++)
+        ts->m_token.t_word[k] = buffer[startChar + k];
+
+      ts->m_token.t_word[nChars] = '\0';
+
+      if (strcmp(ts->m_token.t_word, "if") == 0) {
+        ts->m_token.type = IF;
+      }
+      else if (strcmp(ts->m_token.t_word, "then") == 0) {
+        ts->m_token.type = THEN;
+      }
+      else if (strcmp(ts->m_token.t_word, "else") == 0) {
+        ts->m_token.type = ELSE;
+      }
+      else if (strcmp(ts->m_token.t_word, "fi") == 0) {
+        ts->m_token.type = FI;
+      }
+      else if (strcmp(ts->m_token.t_word, "while") == 0) {
+        ts->m_token.type = WHILE;
+      }
+      else if (strcmp(ts->m_token.t_word, "do") == 0) {
+        ts->m_token.type = DO;
+      }
+      else if (strcmp(ts->m_token.t_word, "done") == 0) {
+        ts->m_token.type = DONE;
+      }
+      else if (strcmp(ts->m_token.t_word, "until") == 0) {
+        ts->m_token.type = DONE;
+      }
+      else {
+        ts->m_token.type = SIMPLE;
+      }
+    }
+    else
+      ts->m_token.t_word = NULL;
+
+    if (cur != NULL)
+    {
+      ts->prev = cur;
+      ts->next = NULL;
+      cur->next = ts;
+      cur = ts;
+    }
+    else
+    {
+      head = ts;
+      cur = head;
+    }
+    i++;
+  }
+  return head;
 }
+
 
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
