@@ -37,8 +37,7 @@ command_t c_pop(int *top);
 int stack_precedence(enum token_type type);
 int stream_precedence(enum token_type type);
 
-char*
-read_bytes(int (*get_next_byte) (void *),
+char* read_bytes(int (*get_next_byte) (void *),
         void *get_next_byte_argument) {
     size_t n, buf_size;
     char next_byte;
@@ -84,8 +83,7 @@ int check_if_word(char c) {
     return 0;
 }
 
-token_stream_t
-tokenize_bytes(char* buf) {
+token_stream_t tokenize_bytes(char* buf) {
     enum token_type type_of_token;
     struct token_stream *head = NULL;
     struct token_stream *cur = head;
@@ -202,8 +200,7 @@ tokenize_bytes(char* buf) {
     return head;
 }
 
-command_stream_t
-make_command_stream(int (*get_next_byte) (void *),
+command_stream_t make_command_stream(int (*get_next_byte) (void *),
         void *get_next_byte_argument) {
 
     char* buf = read_bytes(get_next_byte, get_next_byte_argument);
@@ -403,23 +400,7 @@ void validate_tokens(token_stream_t tstream) {
 
 // TODO: Refactor and combine similar cases
 
-command_stream_t
-tokens_to_command_stream(token_stream_t tstream) {
-    // Gist-of-it:
-    //   (1) Scan the token stream from left to right and for each token: 
-    //   (2)     If a command token, push onto token stack (ts_stack)
-    //   (3)     If a simple command, push onto command stack (c_stack)
-    //   (4)     If a ')', '\n', ';', etc. (end of a command), evaluate 
-    //           based on precedence:
-    //              (a) Pop from token stack
-    //              (b) Pop two commands from command stack
-    //              (c) Combine into one command
-    //              (d) Push the result back onto the command stack
-    //   (5) At the end, a single long-ass, complete command is on the c_stack
-    //
-    // Algorithm adapted from CpSc212 notes by Goddard, CS 31/32 textbook and 
-    // other various online sources
-
+command_stream_t tokens_to_command_stream(token_stream_t tstream) {
     token_stream_t tCur, tNext, tPrev;
     command_t cTemp1, cTemp2, cTemp3, cmdA, cmdB, cmdC;
     command_stream_t csTemp1, csTemp2;
@@ -1012,8 +993,7 @@ command_stream_t append_to_cstream(command_stream_t cStream1, command_stream_t c
     return cStream1;
 }
 
-command_t
-read_command_stream(command_stream_t s) {
+command_t read_command_stream(command_stream_t s) {
     /* FIXME: Replace this with your implementation too.  */
     error(1, 0, "command reading not yet implemented");
     return 0;
