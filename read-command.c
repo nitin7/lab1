@@ -20,6 +20,11 @@
 #include "alloc.h"
 
 #include <error.h>
+#include <string.h>
+#include <stdio.h>
+#include <ctype.h>
+#include <stdlib.h>
+
 
 /* FIXME: You may need to add #include directives, macro definitions,
    static function definitions, etc.  */
@@ -28,7 +33,7 @@
    complete the incomplete type declaration in command.h.  */
 
 token_stream_t tsStack = NULL; 
-command_t *cStack = NULL;
+command_t *c_stack = NULL;
 void ts_push(token_stream_t tStream);
 enum token_type ts_peek();
 token_stream_t ts_pop();
@@ -47,13 +52,11 @@ char* read_bytes(int (*get_next_byte) (void *),
 
     char *buf = (char *) checked_malloc(sizeof (char) * buf_size);
 
-    char next_byte;
-
     while ((next_byte = get_next_byte(get_next_byte_argument)) != EOF) {
         //case where next_byte is a comment - ignore the rest of the line
         if (next_byte == '#') {
             next_byte = get_next_byte(get_next_byte_argument);
-            while (next)byte != '\n' && next_byte != EOF)
+            while (next_byte != '\n' && next_byte != EOF)
                 next_byte = get_next_byte(get_next_byte_argument);
         }
 
@@ -84,7 +87,7 @@ int check_if_word(char c) {
 }
 
 token_stream_t tokenize_bytes(char* buf) {
-    enum token_type type_of_token;
+    enum token_type type;
     struct token_stream *head = NULL;
     struct token_stream *cur = head;
 
@@ -98,7 +101,7 @@ token_stream_t tokenize_bytes(char* buf) {
             case '\n':
                 line++;
                 type = NEWLINE_TOKEN;
-                nextCh = buffer[i + i];
+                char nextCh = buf[i + i];
                 if (nextCh == '\n' && nextCh != '\0') {
                     i++;
                     continue;
@@ -138,7 +141,7 @@ token_stream_t tokenize_bytes(char* buf) {
         int startChar = i;
 
         if (check_if_word(ch) == 1) {
-            while (is_word_char(buffer[nChars + 1 + i]) == 1)
+            while (check_if_word(buf[nChars + 1 + i]) == 1)
                 nChars++;
             type = WORD_TOKEN;
             i += nChars;
@@ -160,9 +163,9 @@ token_stream_t tokenize_bytes(char* buf) {
             exit(1);
         } else if (type = WORD_TOKEN) {
             ts->m_token.t_word = (char *) checked_malloc(sizeof (char) * nChars + 1);
-
-            for (int k = 0; k < nChars; k++)
-                ts->m_token.t_word[k] = buffer[startChar + k];
+		int k;
+            for (k = 0; k < nChars; k++)
+                ts->m_token.t_word[k] = buf[startChar + k];
 
             ts->m_token.t_word[nChars] = '\0';
 
@@ -200,20 +203,8 @@ token_stream_t tokenize_bytes(char* buf) {
     return head;
 }
 
-command_stream_t make_command_stream(int (*get_next_byte) (void *),
-        void *get_next_byte_argument) {
-
-    char* buf = read_bytes(get_next_byte, get_next_byte_argument);
-
-    token_stream_t ts = tokenize_bytes(buf);
-
-
-    error(1, 0, "command reading not yet implemented");
-    return 0;
-}
-
 void validate_tokens(token_stream_t tstream) {
-    enum token_type next
+    enum token_type next;
             enum token_type prev;
     token_stream_t tCur;
     token_stream_t tNext;
@@ -398,6 +389,118 @@ void validate_tokens(token_stream_t tstream) {
 
 }
 
+command_t new_command() {
+    command_t item = (command_t) checked_malloc(sizeof (struct command));
+
+    item->type = SIMPLE_COMMAND;
+    item->status = -1;
+    item->input = item->output = NULL;
+    item->u.word = NULL;
+
+    return item;
+}
+
+command_t combine_commands(command_t cmdA, command_t cmdB, token_stream_t tStream) {
+    if (tStream == NULL) {
+        fprintf(stderr, "Error in combine_commands(): attempting to pop from empty ts_stack\n");
+        exit(1);
+    }
+
+    command_t combined = NULL;
+
+    if (cmdA == NULL || cmdB == NULL) {
+        char token_type[20];
+        switch (tStream->m_token.type) {
+            case 0: strcpy(token_type, "WORD_TOKEN");
+                break;
+            case 1: strcpy(token_type, "SEMICOLON_TOKEN");
+                break;
+            case 2: strcpy(token_type, "PIPE_TOKEN");
+                break;
+            case 3: strcpy(token_type, "LEFT_PAREN_TOKEN");
+                break;
+            case 4: strcpy(token_type, "RIGHT_PAREN_TOKEN");
+                break;
+            case 5: strcpy(token_type, "LESS_TOKEN");
+                break;
+            case 6: strcpy(token_type, "GREATER_TOKEN");
+                break;
+            case 7: strcpy(token_type, "IF_TOKEN");
+                break;
+            case 8: strcpy(token_type, "THEN_TOKEN");
+                break;
+            case 9: strcpy(token_type, "ELSE_TOKEN");
+                break;
+            case 10: strcpy(token_type, "FI_TOKEN");
+                break;
+            case 11: strcpy(token_type, "WHILE_TOKEN");
+                break;
+            case 12: strcpy(token_type, "DO_TOKEN");
+                break;
+            case 13: strcpy(token_type, "DONE_TOKEN");
+                break;
+            case 14: strcpy(token_type, "UNTIL_TOKEN");
+                break;
+            case 15: strcpy(token_type, "NEWLINE_TOKEN");
+                break;
+            case 16: strcpy(token_type, "UNKNOWN_TOKEN");
+                break;
+            case 17: strcpy(token_type, "UNKNOWN_TOKEN");
+                break;
+            default: strcpy(token_type, "ERROR in combine()");
+                break;
+        }
+        fprintf(stderr,
+                "Error in combine_commands(): Either cmd_A or cmd_B wrong\n");
+        if (cmdA == NULL)
+            fprintf(stderr, "Poop. cmd_A is NULL\n");
+        else
+            fprintf(stderr, "Crap. cmd_B is NULL\n");
+        exit(1);
+    }
+    
+    combined = new_command();
+    combined->u.command[0] = cmdA;
+    combined->u.command[1] = cmdB;
+
+    switch (tStream->m_token.type) {
+        case SEMICOLON_TOKEN: combined->type = SEQUENCE_COMMAND;
+            break;
+        case PIPE_TOKEN: combined->type = PIPE_COMMAND;
+            break;
+        case RIGHT_PAREN_TOKEN: combined->type = SUBSHELL_COMMAND;
+            break;
+        default:
+            fprintf(stderr, "Error in combine_commands(): unidentified type token of type %i in 2nd switch statement\n", tStream->m_token.type);
+            exit(1);
+    }
+
+    return combined;
+}
+
+command_stream_t append_to_cstream(command_stream_t cStream1, command_stream_t cStream2) {
+    if (cStream2 == NULL)
+        return cStream1;
+
+    if (cStream1 == NULL) {
+        cStream1 = cStream2;
+        cStream1->prev = cStream2;
+        cStream1->next = NULL;
+        cStream1->number = 1;
+        cStream1->iterator = 0;
+    } else // cstream already has command_stream_t nodes in it so append to end
+    {
+        cStream2->number = (cStream1->prev->number) + 1;
+        cStream2->prev = cStream1->prev;
+        cStream2->next = NULL;
+        cStream2->iterator = 0;
+
+        (cStream1->prev)->next = cStream2;
+        cStream1->prev = cStream2;
+    }
+    return cStream1;
+}
+
 // TODO: Refactor and combine similar cases
 
 command_stream_t tokens_to_command_stream(token_stream_t tstream) {
@@ -423,7 +526,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tstream) {
 
     int top = -1;
     size_t cmdSizeStack = 10 * sizeof (command_t);
-    cStack = (command_t *) checked_malloc(cmdSizeStack);
+    c_stack = (command_t *) checked_malloc(cmdSizeStack);
 
     while (tCur != NULL) {
         tNext = tCur->next;
@@ -780,7 +883,7 @@ void c_push(command_t cmd, int *top, size_t *size) {
         c_stack = (command_t *) checked_grow_alloc(c_stack, size);
 
     (*top)++;
-    cStack[*top] = cmd;
+    c_stack[*top] = cmd;
 
     // printf("PUSHED in a COMMAND of type %d into c_stack[%d]\n", item->type, 
     // *top);
@@ -867,134 +970,35 @@ int stream_precedence(enum token_type type) {
     }
 }
 
-int is_word_char(char ch) {
-    if isalnum(ch)
-        return 1;
+command_stream_t make_command_stream(int (*get_next_byte) (void *),
+        void *get_next_byte_argument) {
 
-    switch (ch) {
-        case '!': case '%': case '+': case ',': case '-': case '_':
-        case '.': case '/': case ':': case '@': case '^':
-            return 1;
+    struct token_stream *ts;
+    struct command_stream *cs;
 
-        default:
-            return 0;
+    char* buf = read_bytes(get_next_byte, get_next_byte_argument);
+
+    ts = tokenize_bytes(buf);
+    if (ts == NULL)
+    { 
+        fprintf(stderr, "%s\n", "Error in make_command_stream(): returning an empty token stream");
+        return NULL;
     }
-}
-
-command_t new_command() {
-    command_t item = (command_t) checked_malloc(sizeof (struct command));
-
-    item->type = SIMPLE_COMMAND;
-    item->status = -1;
-    item->input = item->output = NULL;
-    item->u.word = NULL;
-
-    return item;
-}
-
-command_t combine_commands(command_t cmdA, command_t cmdB, token_stream_t tStream) {
-    if (tStream == NULL) {
-        fprintf(stderr, "Error in combine_commands(): attempting to pop from empty ts_stack\n");
-        exit(1);
-    }
-
-    command_t combined = NULL;
-
-    if (cmdA == NULL || cmdB == NULL) {
-        char token_type[20];
-        switch (tStream->m_token.type) {
-            case 0: strcpy(token_type, "WORD_TOKEN");
-                break;
-            case 1: strcpy(token_type, "SEMICOLON_TOKEN");
-                break;
-            case 2: strcpy(token_type, "PIPE_TOKEN");
-                break;
-            case 3: strcpy(token_type, "LEFT_PAREN_TOKEN");
-                break;
-            case 4: strcpy(token_type, "RIGHT_PAREN_TOKEN");
-                break;
-            case 5: strcpy(token_type, "LESS_TOKEN");
-                break;
-            case 6: strcpy(token_type, "GREATER_TOKEN");
-                break;
-            case 7: strcpy(token_type, "IF_TOKEN");
-                break;
-            case 8: strcpy(token_type, "THEN_TOKEN");
-                break;
-            case 9: strcpy(token_type, "ELSE_TOKEN");
-                break;
-            case 10: strcpy(token_type, "FI_TOKEN");
-                break;
-            case 11: strcpy(token_type, "WHILE_TOKEN");
-                break;
-            case 12: strcpy(token_type, "DO_TOKEN");
-                break;
-            case 13: strcpy(token_type, "DONE_TOKEN");
-                break;
-            case 14: strcpy(token_type, "UNTIL_TOKEN");
-                break;
-            case 15: strcpy(token_type, "NEWLINE_TOKEN");
-                break;
-            case 16: strcpy(token_type, "UNKNOWN_TOKEN");
-                break;
-            case 17: strcpy(token_type, "UNKNOWN_TOKEN");
-                break;
-            default: strcpy(token_type, "ERROR in combine()");
-                break;
-        }
-        fprintf(stderr,
-                "Error in combine_commands(): Either cmd_A or cmd_B wrong\n");
-        if (cmdA == NULL)
-            fprintf(stderr, "Poop. cmd_A is NULL\n");
-        else
-            fprintf(stderr, "Crap. cmd_B is NULL\n");
-        exit(1);
-    }
-    
-    combined = new_command();
-    combined->u.command[0] = cmdA;
-    combined->u.command[1] = cmdB;
-
-    switch (tStream->m_token.type) {
-        case SEMICOLON_TOKEN: combined->type = SEQUENCE_COMMAND;
-            break;
-        case PIPE_TOKEN: combined->type = PIPE_COMMAND;
-            break;
-        case RIGHT_PAREN_TOKEN: combined->type = SUBSHELL_COMMAND;
-            break;
-        default:
-            fprintf(stderr, "Error in combine_commands(): unidentified type token of type %i in 2nd switch statement\n", tStream->m_token.type);
-            exit(1);
-    }
-
-    return combined;
-}
-
-command_stream_t append_to_cstream(command_stream_t cStream1, command_stream_t cStream2) {
-    if (cStream2 == NULL)
-        return cStream1;
-
-    if (cStream1 == NULL) {
-        cStream1 = cStream2;
-        cStream1->prev = cStream2;
-        cStream1->next = NULL;
-        cStream1->number = 1;
-        cStream1->iterator = 0;
-    } else // cstream already has command_stream_t nodes in it so append to end
-    {
-        cStream2->number = (cStream1->prev->number) + 1;
-        cStream2->prev = cStream1->prev;
-        cStream2->next = NULL;
-        cStream2->iterator = 0;
-
-        (cStream1->prev)->next = cStream2;
-        cStream1->prev = cStream2;
-    }
-    return cStream1;
+    cs = tokens_to_command_stream(ts);
+    return cs;
 }
 
 command_t read_command_stream(command_stream_t s) {
     /* FIXME: Replace this with your implementation too.  */
-    error(1, 0, "command reading not yet implemented");
-    return 0;
+  if (s == NULL)
+    return NULL;
+  else if (s->iterator == 0)  // 0 = node has not been iterated over yet
+  {
+    s->iterator = 1;
+    return (s->m_command);
+  }
+  else if (s->next != NULL)
+    return read_command_stream(s->next);
+  else
+    return NULL;
 }
