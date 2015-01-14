@@ -115,7 +115,7 @@ combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
 
 //
 command_stream_t
-append_to_cstream(command_stream_t cstream, command_stream_t item);
+combineStreams(command_stream_t cstream, command_stream_t item);
 
 //-----------------------------------------------------------------------------
 // 
@@ -850,7 +850,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
       if (countParens == 0 && countIfs == 0 && countWhiles == 0 && countUntils == 0){
         csTemp1 = (command_stream_t) checked_malloc(sizeof(struct command_stream));
         csTemp1->command_node = c_pop(&top);
-        csTemp2 = append_to_cstream(csTemp2, csTemp1);
+        csTemp2 = combineStreams(csTemp2, csTemp1);
       }
       cmdTemp1 = NULL;
       word = NULL;
@@ -875,7 +875,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
   csTemp1 = (command_stream_t) checked_malloc(sizeof(struct command_stream));
   csTemp1->command_node = c_pop(&top);
 
-  csTemp2 = append_to_cstream(csTemp2, csTemp1);
+  csTemp2 = combineStreams(csTemp2, csTemp1);
   cmdTemp1 = NULL;
 
   if (c_pop(&top) != NULL){
@@ -966,29 +966,24 @@ combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
   return join_commands;
 }
 
-command_stream_t
-append_to_cstream(command_stream_t cstream, command_stream_t item)
-{
-  if (item == NULL)
-    return cstream;
 
-  if (cstream == NULL)
-  {
-    cstream = item;
-    cstream->prev = item;
-    cstream->next = NULL;
-    cstream->number = 1;
-    cstream->iterator = 0;
+command_stream_t combineStreams(command_stream_t cStream1, command_stream_t cStream2){
+  command_stream_t final = NULL;
+  if (cStream2 == NULL){
+    final = cStream1;
+  }else if (cStream1 != NULL){
+    command_stream_t cTemp1 = cStream1 -> prev;
+    int temp = cTemp1->number;
+    cStream2->number = temp + 1;
+    cStream2->prev = cTemp1;
+    (cStream1->prev)->next = cStream2;
+    cStream1->prev = cStream2;
+    final = cStream1;
+  }else{
+    cStream1 = cStream2;
+    cStream1->prev = cStream2;
+    cStream1->number = 1;
+    final = cStream1;
   }
-  else // cstream already has command_stream_t nodes in it so append to end
-  {
-    item->number = (cstream->prev->number) + 1;
-    item->prev = cstream->prev;
-    item->next = NULL;
-    item->iterator = 0;
-
-    (cstream->prev)->next = item;
-    cstream->prev = item;
-  }
-  return cstream;
+  return final;
 }
