@@ -99,7 +99,7 @@ char* read_into_buffer(int (*get_next_byte) (void *),
                        void *get_next_byte_argument);
 
 // Parses the input file commands into tokens
-token_stream_t tokenize(char *buffer);
+token_stream_t make_tokens_from_bytes(char *buffer);
 
 // Checks for syntax errors
 void validate_tokens(token_stream_t tstream);
@@ -110,11 +110,6 @@ tokens_to_command_stream(token_stream_t tstream);
 //Checks to see whether the input character is a valid word character
 int check_if_word(char ch);
 
-//
-command_t
-new_command();
-
-//
 command_t
 combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
 
@@ -138,7 +133,7 @@ make_command_stream (int (*get_next_byte) (void *),
   struct token_stream *tstream;
   struct command_stream *cstream;
 
-  tstream = tokenize(buffer);
+  tstream = make_tokens_from_bytes(buffer);
   
   if (tstream == NULL)
   { 
@@ -219,31 +214,25 @@ char* read_into_buffer(int (*get_next_byte) (void *),
 }
 
 
-token_stream_t tokenize(char *buf)
+token_stream_t make_tokens_from_bytes(char *buf)
 {
-  int nLines = 1;
-
-  enum token_type type;
-  
   struct token_stream *head = NULL;
-  struct token_stream *cur = head;
-
-  int i = 0;
-
-  if (buf[i] == '\0')
-    return NULL;
+  struct token_stream *ptr = head;
   char* itr = buf;
+  int nLines = 1;
   char ch;  
+  enum token_type tk_type;
+
   while (*itr != '\0')
   {
     ch = *itr;
-    struct token_stream *ts_temp = (struct token_stream *) checked_malloc(sizeof(struct token_stream));
+    struct token_stream *tk_stream = (struct token_stream *) checked_malloc(sizeof(struct token_stream));
     int word_n_chars = 1;
     char* word_start_itr;
 
     if (ch == '\n') {
       nLines++;
-      type = NEWLINE_TOKEN;
+      tk_type = NEWLINE_TOKEN;
       char nextCh = *(itr + 1);
       if (nextCh == '\n' && nextCh != '\0') {
           itr++;
@@ -259,22 +248,22 @@ token_stream_t tokenize(char *buf)
       continue;
     }
     else if (ch == ';') {
-      type = SEMICOLON_TOKEN;
+      tk_type = SEMICOLON_TOKEN;
     }
     else if (ch == '|') {
-      type = PIPE_TOKEN;
+      tk_type = PIPE_TOKEN;
     }
     else if (ch == '(') {
-      type = LEFT_PAREN_TOKEN;
+      tk_type = LEFT_PAREN_TOKEN;
     }
     else if (ch == ')') {
-      type = RIGHT_PAREN_TOKEN;
+      tk_type = RIGHT_PAREN_TOKEN;
     }
     else if (ch == '>') {
-      type = GREATER_TOKEN;
+      tk_type = GREATER_TOKEN;
     }
     else if (ch == '<') {
-      type = LESS_TOKEN;
+      tk_type = LESS_TOKEN;
     }
     else {
       word_n_chars = 1;
@@ -285,67 +274,68 @@ token_stream_t tokenize(char *buf)
         while (check_if_word(*(itr + word_n_chars)))
           word_n_chars++;
         itr += word_n_chars - 1;
-        type = WORD_TOKEN;
+        tk_type = WORD_TOKEN;
       }
       else
       {
-        ts_temp->m_token.t_word = NULL;
-        fprintf(stderr, "Line %i in function tokenize() has an error; the token \'%c\' is invalid.\n", nLines, ch);
+        tk_stream->m_token.t_word = NULL;
+        fprintf(stderr, "Line %i in function make_tokens_from_bytes() has an error; the token \'%c\' is invalid.\n", nLines, ch);
         exit(1);
       }
     }
 
-    ts_temp->prev = NULL;
-    ts_temp->next = NULL;
-    ts_temp->m_token.type = type;
-    ts_temp->m_token.length = word_n_chars;
-    ts_temp->m_token.line_num = nLines;
+    tk_stream->prev = NULL;
+    tk_stream->next = NULL;
+    tk_stream->m_token.type = tk_type;
+    tk_stream->m_token.length = word_n_chars;
+    tk_stream->m_token.line_num = nLines;
 
 
-    if (type == NEWLINE_TOKEN)
-      ts_temp->m_token.line_num = nLines - 1;
-    else if (type == WORD_TOKEN)
+    if (tk_type == NEWLINE_TOKEN)
+      tk_stream->m_token.line_num = nLines - 1;
+    else if (tk_type == WORD_TOKEN)
     {
-      ts_temp->m_token.t_word = (char *) checked_malloc(sizeof (char) * word_n_chars + 1);
+      size_t word_size = 1 + sizeof(char) * word_n_chars;
+      tk_stream->m_token.t_word = (char *) checked_malloc(word_size);
       int k;
       for (k = 0; k < word_n_chars; k++)
-          ts_temp->m_token.t_word[k] = *(word_start_itr + k);
+          tk_stream->m_token.t_word[k] = *(word_start_itr + k);
 
-      ts_temp->m_token.t_word[word_n_chars] = '\0';
+      tk_stream->m_token.t_word[word_n_chars] = '\0';
 
-      if (strcmp(ts_temp->m_token.t_word, "if") == 0) {
-          ts_temp->m_token.type = IF_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "then") == 0) {
-          ts_temp->m_token.type = THEN_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "else") == 0) {
-          ts_temp->m_token.type = ELSE_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "fi") == 0) {
-          ts_temp->m_token.type = FI_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "while") == 0) {
-          ts_temp->m_token.type = WHILE_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "do") == 0) {
-          ts_temp->m_token.type = DO_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "done") == 0) {
-          ts_temp->m_token.type = DONE_TOKEN;
-      } else if (strcmp(ts_temp->m_token.t_word, "until") == 0) {
-          ts_temp->m_token.type = UNTIL_TOKEN;
+      if (strcmp(tk_stream->m_token.t_word, "if") == 0) {
+          tk_stream->m_token.type = IF_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "then") == 0) {
+          tk_stream->m_token.type = THEN_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "else") == 0) {
+          tk_stream->m_token.type = ELSE_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "fi") == 0) {
+          tk_stream->m_token.type = FI_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "while") == 0) {
+          tk_stream->m_token.type = WHILE_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "do") == 0) {
+          tk_stream->m_token.type = DO_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "done") == 0) {
+          tk_stream->m_token.type = DONE_TOKEN;
+      } else if (strcmp(tk_stream->m_token.t_word, "until") == 0) {
+          tk_stream->m_token.type = UNTIL_TOKEN;
       }
     
     } 
     else
-      ts_temp->m_token.t_word = NULL;
+      tk_stream->m_token.t_word = NULL;
 
-    if (cur != NULL)
+    if (ptr != NULL)
     {
-      ts_temp->prev = cur;
-      ts_temp->next = NULL;
-      cur->next = ts_temp;
-      cur = ts_temp;
+      tk_stream->prev = ptr;
+      tk_stream->next = NULL;
+      ptr->next = tk_stream;
+      ptr = tk_stream;
     }
     else
     {
-      head = ts_temp;
-      cur = head;
+      head = tk_stream;
+      ptr = head;
     }
 
     itr++;
@@ -614,7 +604,13 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
     if(ttCur == WORD_TOKEN){
       if (cmdTemp1 == NULL){
         countWords = 0;
-        cmdTemp1 = new_command();
+        size_t struct_command_size = sizeof(struct command);
+        cmdTemp1 = (command_t) checked_malloc(struct_command_size);
+        cmdTemp1->status = -1;
+        cmdTemp1->type = SIMPLE_COMMAND;
+        cmdTemp1->u.word = NULL;
+        cmdTemp1->input = NULL;
+        cmdTemp1->output = NULL;
         word = (char **) checked_malloc(maxWord * sizeof(char *)); 
         cmdTemp1->u.word = word;
       }
@@ -683,7 +679,12 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
             exit(1);
           }      
         }
-        cmdTemp2 = new_command();
+        size_t struct_command_size = sizeof(struct command);
+        cmdTemp2 = (command_t) checked_malloc(struct_command_size);
+        cmdTemp2->status = -1;
+        cmdTemp2->u.word = NULL;
+        cmdTemp2->input = NULL;
+        cmdTemp2->output = NULL;
         cmdTemp2->type = SUBSHELL_COMMAND;
         cmdTemp2->u.command[0] = c_pop(&top); 
         c_push(cmdTemp2, &top, &c_stackSize);
@@ -761,7 +762,12 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
         cmdTemp2 = c_pop(&top);
       }
       
-      cmdTemp3 = new_command();
+      size_t struct_command_size = sizeof(struct command);
+      cmdTemp3 = (command_t) checked_malloc(struct_command_size);
+      cmdTemp3->status = -1;
+      cmdTemp3->u.word = NULL;
+      cmdTemp3->input = NULL;
+      cmdTemp3->output = NULL;
       ttTemp1 = ts_peek(ts_stack);
       if (ttTemp1 != WHILE_TOKEN){
         cmdTemp3->type = UNTIL_COMMAND;
@@ -812,8 +818,13 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
         cmdA = c_pop(&top);
       }      
 
-      cmdTemp1 = new_command();
+      size_t struct_command_size = sizeof(struct command);
+      cmdTemp1 = (command_t) checked_malloc(struct_command_size);
+      cmdTemp1->status = -1;
       cmdTemp1->type = IF_COMMAND;
+      cmdTemp1->u.word = NULL;
+      cmdTemp1->input = NULL;
+      cmdTemp1->output = NULL;
       if (cmdC == NULL)
         cmdTemp1->u.command[2] = NULL;                
       else
@@ -877,10 +888,6 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 } 
 
 
-
-//-----------------
-
-
 void c_push(command_t item, int *top, size_t *size)
 {
   if (item == NULL)
@@ -914,92 +921,6 @@ c_pop(int *top)
   return item;
 }
 
-// If there is a token with higher precedence on the TOKEN stack in comparison // to the token currently being processed on the stream, pop it out and use it 
-// to create a new command by combining two commands in the COMMAND stack. 
-//
-// Example: Tokens '|', ';' on the token stack require popping two commands 
-// out from the command stack to form a new command because these tokens will 
-// have higher precedence.
-// 
-// Also, stack_precedence values > Stream_precedence values due to left-
-// association... These value assignments determine the order in which the 
-// commands are stored in the command stream. They are the results of much 
-// trial-and-error/drawing-of-streams/frustration/hair-pulling.
-//
-int stack_precedence(enum token_type type)
-{
-  switch (type)
-  {
-    case LEFT_PAREN_TOKEN: 
-            return -6;
-    
-    case UNTIL_TOKEN:
-    case WHILE_TOKEN:
-    case IF_TOKEN:
-            return -4;
-
-    case THEN_TOKEN:
-    case DO_TOKEN:
-            return -2;
-
-    case ELSE_TOKEN:
-            return 0;
-        
-    case LESS_TOKEN:
-    case GREATER_TOKEN:
-            return 10;
-
-    case PIPE_TOKEN:
-            return 12;
-
-    case NEWLINE_TOKEN:
-    case SEMICOLON_TOKEN:
-            return 14;
-
-    default:
-            return -10;
-
-  }
-}
-
-
-int stream_precedence(enum token_type type)
-{
-  switch (type)
-  {
-    case LEFT_PAREN_TOKEN: 
-            return 19;
-    
-    case UNTIL_TOKEN:
-    case WHILE_TOKEN:
-    case IF_TOKEN:
-            return 17;
-
-    case THEN_TOKEN:
-    case DO_TOKEN:
-            return 15;
-
-    case ELSE_TOKEN:
-            return 13;
-
-    case LESS_TOKEN:
-    case GREATER_TOKEN:
-            return 7;
-
-    case PIPE_TOKEN:
-            return 5;
-
-    case NEWLINE_TOKEN:
-    case SEMICOLON_TOKEN:
-            return 3;
-
-    default:
-            return -10;
-  }
-}
-
-//-----------------------------------------------------------------------------
-
 int check_if_word(char c) {
     if (isalnum(c) || (c == '!') || (c == '%') || (c == '!') || (c == '+') || (c == '-') || (c == ',') || (c == '.') || (c == '/') || (c == ':') || (c == '@') || (c == '^') || (c == '_'))
         return 1;
@@ -1009,85 +930,41 @@ int check_if_word(char c) {
 
 
 command_t
-new_command()
-{
-  // Creates a simple command by default
-  command_t item = (command_t) checked_malloc(sizeof(struct command));
-  
-  item->type = SIMPLE_COMMAND;
-  item->status = -1;
-  item->input = item->output = NULL;
-  item->u.word = NULL;
-
-  return item;  
-}
-
-
-command_t
 combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
 {
+
+  size_t command_struct_size = sizeof(struct command);
+  command_t join_commands = (command_t) checked_malloc(command_struct_size);
+
+
+  join_commands->status = -1;
+  join_commands->type = SIMPLE_COMMAND;
+  join_commands->u.word = NULL;
+  join_commands->input = NULL;
+  join_commands->output = NULL;
+  join_commands->u.command[0] = cmd_A;
+  join_commands->u.command[1] = cmd_B;
+
+  enum token_type tstream_type = tstream->m_token.type;
   if (tstream == NULL)
   {
-    fprintf(stderr, "Error in combine_commands(): attempting to pop from empty ts_stack\n");
+    fprintf(stderr, "Cannot pop() an empty stack. Error\n");
     exit(1);
   }
-
-  command_t combined = NULL;
-
-  // Make sure that there exists a LHS and a RHS before combining commands
-  if (cmd_A == NULL || cmd_B == NULL)
+  else if (tstream_type == PIPE_TOKEN) 
+    join_commands->type = PIPE_COMMAND;
+  else if (tstream_type == RIGHT_PAREN_TOKEN)
+    join_commands->type = SUBSHELL_COMMAND;
+  else if (tstream_type == SEMICOLON_TOKEN)
+    join_commands->type = SEQUENCE_COMMAND;
+  else 
   {
-    char token_type[20];
-    switch (tstream->m_token.type)
-    {
-      case 0: strcpy(token_type, "WORD_TOKEN");break;
-      case 1: strcpy(token_type, "SEMICOLON_TOKEN");break;
-      case 2: strcpy(token_type, "PIPE_TOKEN");break;
-      case 3: strcpy(token_type, "LEFT_PAREN_TOKEN");break;
-      case 4: strcpy(token_type, "RIGHT_PAREN_TOKEN");break;
-      case 5: strcpy(token_type, "LESS_TOKEN");break;
-      case 6: strcpy(token_type, "GREATER_TOKEN");break;
-      case 7: strcpy(token_type, "IF_TOKEN");break;
-      case 8: strcpy(token_type, "THEN_TOKEN");break;
-      case 9: strcpy(token_type, "ELSE_TOKEN");break;
-      case 10: strcpy(token_type, "FI_TOKEN");break;
-      case 11: strcpy(token_type, "WHILE_TOKEN");break;
-      case 12: strcpy(token_type, "DO_TOKEN");break;
-      case 13: strcpy(token_type, "DONE_TOKEN");break;
-      case 14: strcpy(token_type, "UNTIL_TOKEN");break;
-      case 15: strcpy(token_type, "NEWLINE_TOKEN");break;
-      case 16: strcpy(token_type, "UNKNOWN_TOKEN");break;
-      case 17: strcpy(token_type, "UNKNOWN_TOKEN");break;
-      default: strcpy(token_type, "ERROR in combine()");break;
-    }
-    fprintf(stderr, 
-      "Error in combine_commands(): Either cmd_A or cmd_B wrong\n");
-    if (cmd_A == NULL)
-      fprintf(stderr, "Poop. cmd_A is NULL\n");
-    else
-      fprintf(stderr, "Crap. cmd_B is NULL\n");
+    fprintf(stderr, "Joining commands has an error; the token %i is invalid", tstream_type); 
     exit(1);
   }
-  // Finallu combine the commands
-  combined = new_command();
-  combined->u.command[0] = cmd_A;
-  combined->u.command[1] = cmd_B;
 
-    switch (tstream->m_token.type)
-    {
-      // By default, new_command() creates a simple command so we have to 
-      // manually change the new command's type
-      case SEMICOLON_TOKEN: combined->type = SEQUENCE_COMMAND; break;
-      case PIPE_TOKEN: combined->type = PIPE_COMMAND; break;
-      case RIGHT_PAREN_TOKEN: combined->type = SUBSHELL_COMMAND; break;
-      default: 
-        fprintf(stderr, "Error in combine_commands(): unidentified type token of type %i in 2nd switch statement\n", tstream->m_token.type); 
-        exit(1);
-    }
-
-  return combined;
+  return join_commands;
 }
-
 
 command_stream_t
 append_to_cstream(command_stream_t cstream, command_stream_t item)
