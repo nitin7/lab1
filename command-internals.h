@@ -54,7 +54,7 @@ struct command_stream
   int number;
   int iterator;
 
-  struct command *m_command;
+  struct command *command_node;
   struct command_stream *prev;
   struct command_stream *next;
 };
@@ -64,33 +64,32 @@ struct command_stream
 ///////////////////////////////////////////////////////////////////////////////
 
 enum token_type
-{
-  WORD_TOKEN,           
-  SEMICOLON_TOKEN,
-  PIPE_TOKEN,
-  LEFT_PAREN_TOKEN,
-  RIGHT_PAREN_TOKEN,
-  LESS_TOKEN,  
-  GREATER_TOKEN,
-  IF_TOKEN,
-  THEN_TOKEN, 
-  ELSE_TOKEN,
-  FI_TOKEN, 
-  WHILE_TOKEN,
-  DO_TOKEN, 
-  DONE_TOKEN, 
-  UNTIL_TOKEN,
-  NEWLINE_TOKEN,
-  MISC_TOKEN,
-  UNKNOWN_TOKEN,
-};
+  {
+    IF,
+    FI,
+    ELSE,
+    THEN,
+    WHILE,
+    DO,
+    DONE,
+    UNTIL,
+    SEMICOLON,
+    PIPE,
+    OPEN_PAREN,
+    CLOSE_PAREN,
+    LESS_THAN,
+    GREATER_THAN,
+    WORD,
+    NEW_LINE,
+    OTHER
+  };
 
 struct token
 {
   enum token_type type;
   char *t_word;
-  int length;
-  int line_num;
+  int line_no;
+  int token_len;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -99,7 +98,7 @@ struct token
 
 struct token_stream
 {
-  struct token m_token;
+  struct token token_node;
 
   struct token_stream *prev;
   struct token_stream *next;
