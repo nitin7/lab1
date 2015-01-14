@@ -88,9 +88,6 @@ token_stream_t ts_pop(TStack *stack_t)
 void c_push(command_t item, int *top, size_t *size);
 command_t c_pop(int *top);
 
-int stack_precedence(enum token_type type);
-int stream_precedence(enum token_type type);
-
 //-----------------------------------------------------------------------------
 //
 // Helper functions used in make_command_stream()
