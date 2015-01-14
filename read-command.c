@@ -62,14 +62,8 @@
 token_stream_t ts_stack = NULL;     // struct token_stream *ts_stack
 command_t *c_stack = NULL;          // struct command **c_stack
 
-#define STACK_MAX 100
 #define OFFSET 2
 
-
-struct Stack {
-    int     data[STACK_MAX];
-    int     size;
-};
 
 void ts_push(token_stream_t item);
 enum token_type ts_peek();
