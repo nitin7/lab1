@@ -101,9 +101,6 @@ char* read_into_buffer(int (*get_next_byte) (void *),
 // Parses the input file commands into tokens
 token_stream_t tokenize(char *buffer);
 
-// Outputs the tokens that are parsed
-void display_tokens(token_stream_t tstream);
-
 // Checks for syntax errors
 void validate_tokens(token_stream_t tstream);
 
@@ -356,48 +353,6 @@ token_stream_t tokenize(char *buf)
   return head; 
 } 
 
-
-void display_tokens(token_stream_t tstream)
-{
-  token_stream_t ts_cur = tstream;
-  char token_type[20];
-
-  while (ts_cur != NULL) 
-  {
-    switch (ts_cur->m_token.type)
-    {
-      case 0: strcpy(token_type, "WORD_TOKEN");break;
-      case 1: strcpy(token_type, "SEMICOLON_TOKEN");break;
-      case 2: strcpy(token_type, "PIPE_TOKEN");break;
-      case 3: strcpy(token_type, "LEFT_PAREN_TOKEN");break;
-      case 4: strcpy(token_type, "RIGHT_PAREN_TOKEN");break;
-      case 5: strcpy(token_type, "LESS_TOKEN");break;
-      case 6: strcpy(token_type, "GREATER_TOKEN");break;
-      case 7: strcpy(token_type, "IF_TOKEN");break;
-      case 8: strcpy(token_type, "THEN_TOKEN");break;
-      case 9: strcpy(token_type, "ELSE_TOKEN");break;
-      case 10: strcpy(token_type, "FI_TOKEN");break;
-      case 11: strcpy(token_type, "WHILE_TOKEN");break;
-      case 12: strcpy(token_type, "DO_TOKEN");break;
-      case 13: strcpy(token_type, "DONE_TOKEN");break;
-      case 14: strcpy(token_type, "UNTIL_TOKEN");break;
-      case 15: strcpy(token_type, "NEWLINE_TOKEN");break;
-      case 16: strcpy(token_type, "UNKNOWN_TOKEN");break;
-      case 17: strcpy(token_type, "UNKNOWN_TOKEN");break;
-      default: strcpy(token_type, "ERROR in display()");break;
-    }
-    
-    printf("line %i: %s", ts_cur->m_token.line_num, token_type);
-
-    if (ts_cur->m_token.type == WORD_TOKEN)
-      printf(" - %s", ts_cur->m_token.t_word);
-    
-    printf("\n");
-
-    ts_cur = ts_cur->next;
-  }
-
-} 
 
 void validate_tokens(token_stream_t tStream)
 {
