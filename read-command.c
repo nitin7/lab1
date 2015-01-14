@@ -62,6 +62,15 @@
 token_stream_t ts_stack = NULL;     // struct token_stream *ts_stack
 command_t *c_stack = NULL;          // struct command **c_stack
 
+#define STACK_MAX 100
+#define OFFSET 2
+
+
+struct Stack {
+    int     data[STACK_MAX];
+    int     size;
+};
+
 void ts_push(token_stream_t item);
 enum token_type ts_peek();
 token_stream_t ts_pop();
@@ -69,8 +78,7 @@ token_stream_t ts_pop();
 void c_push(command_t item, int *top, size_t *size);
 command_t c_pop(int *top);
 
-int stack_precedence(enum token_type type);
-int stream_precedence(enum token_type type);
+int precedence(enum token_type type, int stack);
 
 //-----------------------------------------------------------------------------
 //
@@ -91,23 +99,19 @@ void display_tokens(token_stream_t tstream);
 // Checks for syntax errors
 void validate_tokens(token_stream_t tstream);
 
-command_stream_t
-tokens_to_command_stream(token_stream_t tstream);
+command_stream_t tokens_to_command_stream(token_stream_t tstream);
 
 //Checks to see whether the input character is a valid word character
 int check_if_word(char ch);
 
 //
-command_t
-new_command();
+command_t new_command();
 
 //
-command_t
-combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
+command_t combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
 
 //
-command_stream_t
-append_to_cstream(command_stream_t cstream, command_stream_t item);
+command_stream_t append_to_cstream(command_stream_t cstream, command_stream_t item);
 
 //-----------------------------------------------------------------------------
 // 
@@ -681,7 +685,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
     }else if (ttCur == SEMICOLON_TOKEN){
       c_push(cmdTemp1, &top, &c_stackSize);
 
-      while (stack_precedence(ts_peek()) > stream_precedence(tsCur->m_token.type)){
+      while (precedence(ts_peek(), 1) > precedence(tsCur->m_token.type, 0)){
         cmdB = c_pop(&top);
         cmdA = c_pop(&top);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop());
@@ -696,7 +700,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
     }else if (ttCur == PIPE_TOKEN){
       c_push(cmdTemp1, &top, &c_stackSize);
-      while (stack_precedence(ts_peek()) > stream_precedence(tsCur->m_token.type)){
+      while (precedence(ts_peek(), 1) > precedence(tsCur->m_token.type, 0)){
         cmdB = c_pop(&top);
         cmdA = c_pop(&top);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop());
@@ -876,7 +880,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
     }else if (ttCur == NEWLINE_TOKEN){
       c_push(cmdTemp1, &top, &c_stackSize);
-      while (stack_precedence(ts_peek()) > stream_precedence(tsCur->m_token.type)){
+      while (precedence(ts_peek(), 1) > precedence(tsCur->m_token.type, 0)){
         cmdB = c_pop(&top);
         cmdA = c_pop(&top);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop());
@@ -987,8 +991,7 @@ void ts_push(token_stream_t item)
 }
 
 
-enum token_type 
-ts_peek()
+enum token_type ts_peek()
 {
   if (ts_stack == NULL)     // If ts_stack is empty
     return UNKNOWN_TOKEN;
@@ -997,8 +1000,7 @@ ts_peek()
 }
 
 
-token_stream_t 
-ts_pop()
+token_stream_t ts_pop()
 {
   if (ts_stack == NULL)
     return NULL;
@@ -1036,8 +1038,7 @@ void c_push(command_t item, int *top, size_t *size)
 }
 
 
-command_t 
-c_pop(int *top)
+command_t c_pop(int *top)
 {
   if (*top == -1) // If c_stack is empty
     return NULL;
@@ -1064,75 +1065,44 @@ c_pop(int *top)
 // commands are stored in the command stream. They are the results of much 
 // trial-and-error/drawing-of-streams/frustration/hair-pulling.
 //
-int stack_precedence(enum token_type type)
+int precedence(enum token_type type, int stack)
 {
-  switch (type)
-  {
-    case LEFT_PAREN_TOKEN: 
-            return -6;
-    
-    case UNTIL_TOKEN:
-    case WHILE_TOKEN:
-    case IF_TOKEN:
-            return -4;
-
-    case THEN_TOKEN:
-    case DO_TOKEN:
-            return -2;
-
-    case ELSE_TOKEN:
-            return 0;
-        
-    case LESS_TOKEN:
-    case GREATER_TOKEN:
-            return 10;
-
-    case PIPE_TOKEN:
-            return 12;
-
-    case NEWLINE_TOKEN:
-    case SEMICOLON_TOKEN:
-            return 14;
-
-    default:
-            return -10;
-
-  }
-}
-
-
-int stream_precedence(enum token_type type)
-{
-  switch (type)
-  {
-    case LEFT_PAREN_TOKEN: 
-            return 19;
-    
-    case UNTIL_TOKEN:
-    case WHILE_TOKEN:
-    case IF_TOKEN:
-            return 17;
-
-    case THEN_TOKEN:
-    case DO_TOKEN:
-            return 15;
-
-    case ELSE_TOKEN:
-            return 13;
-
-    case LESS_TOKEN:
-    case GREATER_TOKEN:
-            return 7;
-
-    case PIPE_TOKEN:
-            return 5;
-
-    case NEWLINE_TOKEN:
-    case SEMICOLON_TOKEN:
-            return 3;
-
-    default:
-            return -10;
+  if(stack){
+    if (type == ELSE_TOKEN){
+      return 0*OFFSET;
+    }else if (type == GREATER_TOKEN || type == LESS_TOKEN){
+      return 5*OFFSET;
+    }else if (type == PIPE_TOKEN){
+      return 6*OFFSET;
+    }else if (type == SEMICOLON_TOKEN || type == NEWLINE_TOKEN){
+      return 7*OFFSET;
+    }else if (type == DO_TOKEN || type == THEN_TOKEN){
+      return -1*OFFSET;
+    }else if (type == IF_TOKEN || type == WHILE_TOKEN || type == UNTIL_TOKEN){
+      return -2*OFFSET;
+    }else if (type == LEFT_PAREN_TOKEN){
+      return -3*OFFSET;
+    }else{
+      return -5*OFFSET;
+    }
+  }else{
+    if (type == ELSE_TOKEN){
+      return 6*OFFSET+1;
+    }else if (type == GREATER_TOKEN || type == LESS_TOKEN){
+      return 3*OFFSET+1;
+    }else if (type == PIPE_TOKEN){
+      return 2*OFFSET+1;
+    }else if (type == SEMICOLON_TOKEN || type == NEWLINE_TOKEN){
+      return OFFSET+1;
+    }else if (type == DO_TOKEN || type == THEN_TOKEN){
+      return 7*OFFSET+1;
+    }else if (type == IF_TOKEN || type == WHILE_TOKEN || type == UNTIL_TOKEN){
+      return 8*OFFSET+1;
+    }else if (type == LEFT_PAREN_TOKEN){
+      return 9*OFFSET+1;
+    }else{
+      return -5*OFFSET;
+    }
   }
 }
 
