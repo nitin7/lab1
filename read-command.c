@@ -89,25 +89,23 @@ struct CStack {
 
 typedef struct CStack CStack;
 
-void c_push(command_t item, size_t *size, struct CStack *cstack)
-{
-  if (item == NULL)
-    return;
-  if (*size <= (cstack->top) * sizeof(command_t))
-    cstack->c_stack = (command_t *) checked_grow_alloc(cstack->c_stack, size);
-  (cstack->top)++;
-  cstack->c_stack[cstack->top] = item;
-
+void c_push(command_t item, size_t *size, struct CStack *cstack){
+  if (item != NULL){
+    if (*size <= (cstack->top) * sizeof(command_t))
+      cstack->c_stack = (command_t *) checked_grow_alloc(cstack->c_stack, size);
+    (cstack->top)++;
+    cstack->c_stack[cstack->top] = item;
+  }
 }
 
 
-command_t c_pop(struct CStack *cstack)
-{
-  if (cstack->top == 0)
-    return NULL;
+command_t c_pop(struct CStack *cstack){
   command_t item = NULL;
-  item = cstack->c_stack[cstack->top];
-  (cstack->top)--;
+  if (cstack->top != 0){
+    item = cstack->c_stack[cstack->top];
+    (cstack->top)--;
+    return item;
+  }
   return item;
 }
 
@@ -132,7 +130,7 @@ command_stream_t commandBuilder(token_stream_t tstream);
 //Word validation
 int check_if_word(char ch);
 
-command_t combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
+command_t join(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
 
 command_stream_t combineStreams(command_stream_t cstream, command_stream_t item);
 
@@ -544,7 +542,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
         cmdB = c_pop( cstack);
         cmdA = c_pop(cstack);
-        cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
+        cmdTemp1 = join(cmdA, cmdB, ts_pop(ts_stack));
         c_push(cmdTemp1, &c_stackSize, cstack);
       }
       cmdTemp1 = NULL;
@@ -559,7 +557,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
         cmdB = c_pop( cstack);
         cmdA = c_pop( cstack);
-        cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
+        cmdTemp1 = join(cmdA, cmdB, ts_pop(ts_stack));
         c_push(cmdTemp1,  &c_stackSize, cstack);
       }
       cmdTemp1 = cmdB = cmdA = NULL;
@@ -581,7 +579,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
           if (ts_peek(ts_stack) != OTHER){
             cmdB = c_pop( cstack);
             cmdA = c_pop( cstack);
-            cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));  
+            cmdTemp1 = join(cmdA, cmdB, ts_pop(ts_stack));  
             c_push(cmdTemp1,  &c_stackSize, cstack);
             cmdTemp1 = NULL;         
           }else{
@@ -743,7 +741,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
         cmdB = c_pop( cstack);
         cmdA = c_pop(cstack);
-        cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
+        cmdTemp1 = join(cmdA, cmdB, ts_pop(ts_stack));
         c_push(cmdTemp1, &c_stackSize, cstack);
       }
       if (countParens == 0 && countIfs == 0 && countWhiles == 0 && countUntils == 0){
@@ -766,7 +764,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
   while (ts_peek(ts_stack) != OTHER){
     cmdB = c_pop( cstack);
     cmdA = c_pop( cstack);
-    cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
+    cmdTemp1 = join(cmdA, cmdB, ts_pop(ts_stack));
     c_push(cmdTemp1,  &c_stackSize, cstack);
   }
 
@@ -796,7 +794,7 @@ int check_if_word(char c) {
 
 
 command_t
-combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
+join(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
 {
 
   size_t command_struct_size = sizeof(struct command);
@@ -814,8 +812,7 @@ combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
   enum token_type tstream_type = tstream->token_node.type;
   if (tstream == NULL)
   {
-    fprintf(stderr, "Cannot pop() an empty stack. Error\n");
-    exit(1);
+    writeError("join()", NULL);
   }
   else if (tstream_type == PIPE) 
     join_commands->type = PIPE_COMMAND;
@@ -825,8 +822,7 @@ combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream)
     join_commands->type = SEQUENCE_COMMAND;
   else 
   {
-    fprintf(stderr, "Joining commands has an error; the token %i is invalid", tstream_type); 
-    exit(1);
+    writeError("join()", NULL);
   }
 
   return join_commands;
