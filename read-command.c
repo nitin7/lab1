@@ -66,7 +66,6 @@ void ts_push(TStack *stack_t, token_stream_t tks)
     }
     else
       return;
-        // fprintf(stderr, "Error. The stack is full.\n");
 }
 
 token_stream_t ts_pop(TStack *stack_t)
@@ -83,101 +82,92 @@ token_stream_t ts_pop(TStack *stack_t)
     return top;
 }
 
+void c_push(command_t item, int *top, size_t *size)
+{
+  if (item == NULL)
+    return;
+  // Empty stack has top at -1
+  if (*size <= (*top + 1) * sizeof(command_t))
+    c_stack = (command_t *) checked_grow_alloc(c_stack, size);
+
+  (*top)++;
+  c_stack[*top] = item;
+
+}
+
+
+command_t 
+c_pop(int *top)
+{
+  if (*top == -1)
+    return NULL;
+
+  command_t item = NULL;
+  item = c_stack[*top];
+  
+  // printf("POPPED out a COMMAND of type %d out of c_stack[%d]\n", 
+  // item->type, *top);
+
+  (*top)--;
+  return item;
+}
 
 
 void c_push(command_t item, int *top, size_t *size);
 command_t c_pop(int *top);
 
-//-----------------------------------------------------------------------------
-//
-// Helper functions used in make_command_stream()
-//
-//-----------------------------------------------------------------------------
-
-// Reads in the input file stream into a buffer for easier processing
-char* read_into_buffer(int (*get_next_byte) (void *), 
-                       void *get_next_byte_argument);
-
-// Parses the input file commands into tokens
+//Parsing
+char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argument);
 token_stream_t make_tokens_from_bytes(char *buffer);
 
-// Checks for syntax errors
-void validate_tokens(token_stream_t tstream);
+//Helper function to write errors during validation
+void writeError(char* funcName, token_stream_t cur);
 
-command_stream_t
-tokens_to_command_stream(token_stream_t tstream);
+//Syntax checking
+void checkSyntax(token_stream_t tstream);
 
-//Checks to see whether the input character is a valid word character
+//Used to determine precedence
+int calcPVal(int multiplier, int stack);
+
+//Converting to command stream
+command_stream_t commandBuilder(token_stream_t tstream);
+
+//Word validation
 int check_if_word(char ch);
 
-command_t
-combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
+command_t combine_commands(command_t cmd_A, command_t cmd_B, token_stream_t tstream);
 
-//
-command_stream_t
-combineStreams(command_stream_t cstream, command_stream_t item);
+command_stream_t combineStreams(command_stream_t cstream, command_stream_t item);
 
-//-----------------------------------------------------------------------------
-// 
-// The major functions
-//
-//-----------------------------------------------------------------------------
-
-command_stream_t
-make_command_stream (int (*get_next_byte) (void *),
-         void *get_next_byte_argument)
-{
+command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_next_byte_argument){
   char *buffer = read_into_buffer(get_next_byte, get_next_byte_argument);
-  
-  // UPDATE to typedef later for readability
   struct token_stream *tstream;
   struct command_stream *cstream;
-
   tstream = make_tokens_from_bytes(buffer);
-  
-  if (tstream == NULL)
-  { 
-    fprintf(stderr, "%s\n", "Function make_command_stream() has an error; no tokens found");
-    return NULL;
+  if (tstream != NULL){ 
+    checkSyntax(tstream);
+    cstream = commandBuilder(tstream);
+    return cstream;   
   }
-  
-  // Before changing some '\n' to ';'
-
-  validate_tokens(tstream);
-
-  // After changing some '\n' to ';'
-
-  cstream = tokens_to_command_stream(tstream);
-
-  return cstream;
+  return NULL;
 }
 
 
-command_t
-read_command_stream (command_stream_t s)
-{
-  if (s == NULL)
-    return NULL;
-  else if (s->iterator == 0)  // 0 = node has not been iterated over yet
-  {
-    s->iterator = 1;
-    return (s->command_node);
+command_t read_command_stream (command_stream_t s){
+  int iter = s->iterator;
+  struct command *node = s->command_node;
+  if (s != NULL){
+    if (iter == 0){
+      s->iterator++;
+      return node;
+    }else if (s->next != NULL){
+      return read_command_stream(s->next);
+    }
   }
-  else if (s->next != NULL)
-    return read_command_stream(s->next);
-  else
-    return NULL;
+  return NULL;
 }
 
-//-----------------------------------------------------------------------------
-//
-// Function definitions
-//
-//-----------------------------------------------------------------------------
-
-char* read_into_buffer(int (*get_next_byte) (void *), 
-                       void *get_next_byte_argument)
-{
+char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argument){
     size_t n, buf_size;
     char next_byte;
 
@@ -197,7 +187,6 @@ char* read_into_buffer(int (*get_next_byte) (void *),
         if (next_byte != EOF) {
             buf[n] = next_byte;
             n++;
-
             if (n == buf_size)
                 buf = checked_grow_alloc(buf, &buf_size);
         }
@@ -214,8 +203,7 @@ char* read_into_buffer(int (*get_next_byte) (void *),
 }
 
 
-token_stream_t make_tokens_from_bytes(char *buf)
-{
+token_stream_t make_tokens_from_bytes(char *buf){
   struct token_stream *head = NULL;
   struct token_stream *ptr = head;
   char* itr = buf;
@@ -269,15 +257,13 @@ token_stream_t make_tokens_from_bytes(char *buf)
       word_n_chars = 1;
       word_start_itr = itr;
 
-      if (check_if_word(ch))
-      {
+      if (check_if_word(ch)){
         while (check_if_word(*(itr + word_n_chars)))
           word_n_chars++;
         itr += word_n_chars - 1;
         tk_type = WORD;
       }
-      else
-      {
+      else{
         tk_stream->token_node.t_word = NULL;
         fprintf(stderr, "Line %i in function make_tokens_from_bytes() has an error; the token \'%c\' is invalid.\n", nLines, ch);
         exit(1);
@@ -293,8 +279,7 @@ token_stream_t make_tokens_from_bytes(char *buf)
 
     if (tk_type == NEW_LINE)
       tk_stream->token_node.line_no = nLines - 1;
-    else if (tk_type == WORD)
-    {
+    else if (tk_type == WORD){
       size_t word_size = 1 + sizeof(char) * word_n_chars;
       tk_stream->token_node.t_word = (char *) checked_malloc(word_size);
       int k;
@@ -343,9 +328,17 @@ token_stream_t make_tokens_from_bytes(char *buf)
   return head; 
 } 
 
+void writeError(char* funcName, token_stream_t cur){
+  if (cur!= NULL){
+  fprintf(stderr, "%i: Function %s has an error\n", cur->token_node.line_no, funcName);
+  }else{
+    fprintf(stderr, "Function %s has an error\n", funcName);
+  }
+  exit(1);
+}
 
-void validate_tokens(token_stream_t tStream)
-{
+
+void checkSyntax(token_stream_t tStream){
   enum token_type tNext; 
   enum token_type tPrev;
   token_stream_t tsCur;
@@ -358,7 +351,6 @@ void validate_tokens(token_stream_t tStream)
   int numIf = 0;
   int numDone = 0; 
 
-  
   while(tsCur != NULL){
     tsNext = tsCur->next;
     tNext = (tsNext == NULL) ? OTHER : tsNext->token_node.type;
@@ -366,122 +358,51 @@ void validate_tokens(token_stream_t tStream)
     tPrev = (tsPrev == NULL) ? OTHER : tsPrev->token_node.type;
 
     int wordCheck = tNext == IF || tNext == FI || tNext == THEN || tNext == ELSE || tNext == DO || tNext == DONE || tNext == UNTIL || tNext == WHILE;
-    int semicolonCheck = ((tNext == OPEN_PAREN || tNext == CLOSE_PAREN 
-              || tNext == WORD) && ((numParens != 0 && tPrev != OPEN_PAREN) ||
-
-                (numIf != 0 && !(tPrev == IF || 
-                  tPrev == THEN ||
-                  tPrev == ELSE)) ||
-
-                (numDone != 0 && !(tPrev == WHILE || 
-                  tPrev == UNTIL || tPrev == DO)))); 
+    int semicolonCheck1 = ((tNext == OPEN_PAREN || tNext == CLOSE_PAREN || tNext == WORD) && ((numParens != 0 && tPrev != OPEN_PAREN) ||
+                          (numIf != 0 && !(tPrev == IF || tPrev == THEN || tPrev == ELSE)) || (numDone != 0 && !(tPrev == WHILE || tPrev == UNTIL || tPrev == DO)))); 
+    int semicolonCheck2 = tNext != IF && tNext != FI && tNext != THEN && tNext != ELSE && tNext != OPEN_PAREN && tNext != CLOSE_PAREN && tNext != WORD && tNext != DO && tNext != DONE && tNext != WHILE && tNext != UNTIL;
 
     enum token_type ttCur = tsCur->token_node.type;
-    if (ttCur == WORD){
-      if (wordCheck){
-            tNext = WORD;
-          }
-    }else if (ttCur == SEMICOLON){
-      if (tNext == SEMICOLON) {
-        fprintf(stderr, "Line %i in function validate() has an error: SEMICOLON cannot be followed by another semicolon\n", tsCur->token_node.line_no);
-        exit(1);
-      }
-      if (tsCur == tStream) {
-        fprintf(stderr, "Line %i in function validate() has an error: SEMICOLON cannot be the first token\n", tsCur->token_node.line_no);
-        exit(1);
-      }
-    }else if (ttCur == PIPE){
-      if (tsCur->token_node.type == tNext) {
-        fprintf(stderr, "Line %i in function validate() has an error: PIPE op cannot have repeated token of type %i\n", tsCur->token_node.line_no, tNext);
-        exit(1);
-      }
-      if (tsCur == tStream) {
-        fprintf(stderr, "Line %i in function validate() has an error: PIPE op cannot be first token\n", tsCur->token_node.line_no);
-        exit(1);
-      }
-      if (tNext == SEMICOLON) {
-        fprintf(stderr, "Line %i in function validate() has an error: PIPE op cannot be followed by another PIPE op\n", tsCur->token_node.line_no);
-        exit(1);
-      } 
-    }else if (ttCur == OPEN_PAREN){
+    if (ttCur == WORD && wordCheck)
+        tNext = WORD;
+    else if (ttCur == SEMICOLON && (tNext == SEMICOLON || tsCur == tStream))
+        writeError("checkSyntax()", tsCur);
+    else if (ttCur == PIPE && (tsCur->token_node.type == tNext || tsCur == tStream || tNext == SEMICOLON))
+        writeError("checkSyntax()", tsCur);
+    else if (ttCur == OPEN_PAREN){
       if (tNext == CLOSE_PAREN)
-      {
-        fprintf(stderr, "Line %i in function validate() has an error: shouldn't have an empty subcommand\n", tsCur->token_node.line_no);
-        exit(1);
-      }
+        writeError("checkSyntax()", tsCur);
       numParens++;
-    }else if (ttCur == CLOSE_PAREN){
+    }else if (ttCur == CLOSE_PAREN)
       numParens--;
-    }else if (ttCur == LESS_THAN || ttCur == GREATER_THAN){
-      if (tNext != WORD || tsNext == NULL) {
-        fprintf(stderr, "Line %i in function validate() has an error: expected word following redirection op\n", tsCur->token_node.line_no);
-        exit(1);
-      }
-    }else if (ttCur == NEW_LINE && tsNext != NULL){
-      if (semicolonCheck){ 
+    else if ((ttCur == LESS_THAN || ttCur == GREATER_THAN) && (tNext != WORD || tsNext == NULL))
+        writeError("checkSyntax()", tsCur);
+    else if (ttCur == NEW_LINE && tsNext != NULL){
+      if (semicolonCheck1)
         tsCur->token_node.type = SEMICOLON;
-      }else{
-        if (tNext != IF && tNext != FI && tNext != THEN && tNext != ELSE && tNext != OPEN_PAREN && tNext != CLOSE_PAREN && tNext != WORD && tNext != DO && tNext != DONE && tNext != WHILE && tNext != UNTIL){
-          fprintf(stderr, "Line %i in function validate() has an error: Newlines can only appear before certain tokens\n", tsCur->token_node.line_no);
-          exit(1);
-        }
-      }
-    }else if (ttCur == THEN || ttCur == ELSE){
-      if (tsNext == NULL || tNext == FI) {
-        fprintf(stderr, "Line %i in function validate() has an error: special words can't have tokens of type %i right after/next token is null\n", tsCur->token_node.line_no, tNext);
-        exit(1);
-      }
-      if(ttCur == DO){
-        if (tPrev == WORD){
-          tsCur->token_node.type = WORD;
-        }
-        if (tsCur->token_node.type == tNext) {
-          fprintf(stderr, "Line %i in function validate() has an error: can't have repeated token of type %i\n", tsCur->token_node.line_no, tNext);
-          exit(1);
-        }   
-        if (tPrev != NEW_LINE && tPrev != SEMICOLON) {
-          fprintf(stderr, "Line %i in function validate() has an error: special words must have a ';' or '\\n' after\n", tsCur->token_node.line_no);
-          exit(1);
-        }         
-        if (tsNext == NULL || tNext == SEMICOLON ) {
-          fprintf(stderr, "Line %i in function validate() has an error: special words can't have tokens of type %i right after/next token is null\n", tsCur->token_node.line_no, tNext);
-          exit(1);
-        }
-      }
-    }else if (ttCur == DO){
+      else if(semicolonCheck2)
+        writeError("checkSyntax()", tsCur);
+    }else if ((ttCur == THEN || ttCur == ELSE) && (tsNext == NULL || tNext == FI))
+        writeError("checkSyntax()", tsCur);
+    else if (ttCur == DO){
       if (tPrev == WORD){
         tsCur->token_node.type = WORD;
       }
-      if (tsCur->token_node.type == tNext) {
-        fprintf(stderr, "Line %i in function validate() has an error: can't have repeated token of type %i\n", tsCur->token_node.line_no, tNext);
-        exit(1);
-      }   
-      if (tPrev != NEW_LINE && tPrev != SEMICOLON) {
-        fprintf(stderr, "Line %i in function validate() has an error: special words must have a ';' or '\\n' after\n", tsCur->token_node.line_no);
-        exit(1);
-      }         
-      if (tsNext == NULL || tNext == SEMICOLON ) {
-        fprintf(stderr, "Line %i in function validate() has an error: special words can't have tokens of type %i right after/next token is null\n", tsCur->token_node.line_no, tNext);
-        exit(1);
-      }
+      if (tsCur->token_node.type == tNext || (tPrev != NEW_LINE && tPrev != SEMICOLON) || (tsNext == NULL || tNext == SEMICOLON))
+        writeError("checkSyntax()", tsCur);
     }else{
       switch (ttCur){
         case DONE:
         case FI:
-          if (tNext == WORD){
-            fprintf(stderr, "Line %i in function validate() has an error: can't have a word right after DONE, FI\n", tsCur->token_node.line_no);
-            exit(1);
-          }
+          if (tNext == WORD)
+            writeError("checkSyntax()", tsCur);
         case IF:      
         case WHILE:
         case UNTIL:
-          if (tNext == SEMICOLON || tsNext == NULL) {
-            fprintf(stderr, "Line %i in function validate() has an error: special words can't have tokens of type %i right after/next token is null\n", tsCur->token_node.line_no, tNext);
-            exit(1);
-          }
-          if (tPrev == WORD){
+          if (tNext == SEMICOLON || tsNext == NULL)
+            writeError("checkSyntax()", tsCur);
+          if (tPrev == WORD)
             tsCur->token_node.type = WORD;
-          }
           if (tsCur->token_node.type == IF)
             numIf++;
           else if (tsCur->token_node.type == FI)
@@ -500,65 +421,56 @@ void validate_tokens(token_stream_t tStream)
     tsCur = tsNext;
   }
 
-  if(numDone != 0){
-    fprintf(stderr, "Function validate() has an error: To many done tokens\n");
-    exit(1);
-  }
-
-  if(numIf != 0){
-    fprintf(stderr, "Function validate() has an error: Too many IFs\n");
-    exit(1);
-  }
-
-  if(numParens != 0){
-    fprintf(stderr, "Function validate() has an error: Parenthesis mismatch\n");
-    exit(1);
-  }
+  if(numDone != 0 || numIf != 0 || numParens != 0)
+    writeError("checkSyntax()", tsCur);
 }
 
-int precedence(enum token_type type, int stack)
-{
+int calcPVal(int multiplier, int stack){
+  int value = (stack) ? multiplier*OFFSET : multiplier*OFFSET+1;
+  return value;
+}
+
+int precedence(enum token_type type, int stack){
   if(stack){
     if (type == ELSE){
-      return 0*OFFSET;
+      return calcPVal(0, stack);
     }else if (type == GREATER_THAN || type == LESS_THAN){
-      return 5*OFFSET;
+      return calcPVal(5, stack);
     }else if (type == PIPE){
-      return 6*OFFSET;
+      return calcPVal(6, stack);
     }else if (type == SEMICOLON || type == NEW_LINE){
-      return 7*OFFSET;
+      return calcPVal(7, stack);
     }else if (type == DO || type == THEN){
-      return -1*OFFSET;
+      return calcPVal(-1, stack);
     }else if (type == IF || type == WHILE || type == UNTIL){
-      return -2*OFFSET;
+      return calcPVal(-2, stack);
     }else if (type == OPEN_PAREN){
-      return -3*OFFSET;
+      return calcPVal(-3, stack);
     }else{
-      return -5*OFFSET;
+      return calcPVal(-5, stack);
     }
   }else{
     if (type == ELSE){
-      return 6*OFFSET+1;
+      return calcPVal(6, stack);
     }else if (type == GREATER_THAN || type == LESS_THAN){
-      return 3*OFFSET+1;
+      return calcPVal(3, stack);
     }else if (type == PIPE){
-      return 2*OFFSET+1;
+      return calcPVal(2, stack);
     }else if (type == SEMICOLON || type == NEW_LINE){
-      return OFFSET+1;
+      return calcPVal(1, stack);
     }else if (type == DO || type == THEN){
-      return 7*OFFSET+1;
+      return calcPVal(7, stack);
     }else if (type == IF || type == WHILE || type == UNTIL){
-      return 8*OFFSET+1;
+      return calcPVal(8, stack);
     }else if (type == OPEN_PAREN){
-      return 9*OFFSET+1;
+      return calcPVal(9, stack);
     }else{
-      return -5*OFFSET;
+      return calcPVal(-5, stack);
     }
   }
 }
 
-command_stream_t tokens_to_command_stream(token_stream_t tStream)
-{
+command_stream_t commandBuilder(token_stream_t tStream){
   TStack* ts_stack = checked_malloc(sizeof(TStack));
   ts_stack->n_items = 0;
 
@@ -675,8 +587,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
             c_push(cmdTemp1, &top, &c_stackSize);
             cmdTemp1 = NULL;         
           }else{
-            fprintf(stderr, "Error in tokens_to_command_stream(): Unknown token returned in CLOSE_PAREN case\n");
-            exit(1);
+            writeError("commandBuilder()", NULL);
           }      
         }
         size_t struct_command_size = sizeof(struct command);
@@ -692,15 +603,13 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
         word = NULL;
         ts_pop(ts_stack); 
       }else{
-        fprintf(stderr, "Error in tokens_to_command_stream(): unmatched ')'\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }
       
     }else if (ttCur == LESS_THAN || ttCur == GREATER_THAN){
       c_push(cmdTemp1, &top, &c_stackSize);
       if (tsNext == NULL || tsNext->token_node.type != WORD){
-        fprintf(stderr, "Error in tokens_to_command_stream(): wrong token type after redirection operator\n");
-        exit(1);   
+        writeError("commandBuilder()", NULL);   
       }else{
         cmdTemp1 = c_pop(&top);
         if (cmdTemp1 != NULL) {
@@ -715,8 +624,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
           if (tsCur != NULL)
             tsNext = tsCur->next; 
         }else{
-          fprintf(stderr, "Error in tokens_to_command_stream(): wrong command type left of redirection operator\n");
-          exit(1);
+          writeError("commandBuilder()", NULL);
         }      
       }
 
@@ -740,15 +648,13 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
     }else if (ttCur == DONE){
       if (countUntils == 0 && countWhiles == 0) {
-        fprintf(stderr, "Error in tokens_to_command_stream(): unmatched 'done' for while' or 'until' command\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }
       c_push(cmdTemp1, &top, &c_stackSize);
 
       enum token_type ttTemp1 = ts_peek(ts_stack);
       if (ttTemp1 == OTHER){
-        fprintf(stderr, "Error in tokens_to_command_stream(): null token returned in DONE case\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }else if (ttTemp1 == DO){
         cmdTemp1 = c_pop(&top);
         ts_pop(ts_stack);
@@ -756,8 +662,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
       ttTemp1 = ts_peek(ts_stack);
       if (ttTemp1 == OTHER ){
-        fprintf(stderr, "Error in tokens_to_command_stream(): null token returned in DONE case\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }else if (ttTemp1 == WHILE || ttTemp1 == UNTIL){
         cmdTemp2 = c_pop(&top);
       }
@@ -787,15 +692,13 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
     }else if (ttCur == FI){
       if (countIfs == 0){
-        fprintf(stderr, "Error in tokens_to_command_stream(): unmatched 'fi' for 'IF' command\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }
       c_push(cmdTemp1, &top, &c_stackSize);
 
       enum token_type ttTemp2 = ts_peek(ts_stack);
       if (ttTemp2 == OTHER ){
-        fprintf(stderr, "Error in tokens_to_command_stream(): unknown token returned in FI case\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == ELSE){
         cmdC = c_pop(&top);
         ts_pop(ts_stack);
@@ -803,8 +706,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 
       ttTemp2 = ts_peek(ts_stack);
       if (ttTemp2 == OTHER){
-        fprintf(stderr, "Error in tokens_to_command_stream(): unknown token returned in FI case\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == THEN){
         cmdB = c_pop(&top);
         ts_pop(ts_stack);
@@ -812,8 +714,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
       
       ttTemp2 = ts_peek(ts_stack);
       if (ttTemp2 == OTHER){
-        fprintf(stderr, "Error in tokens_to_command_stream(): unknown token returned in FI case\n");
-        exit(1);
+        writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == IF){
         cmdA = c_pop(&top);
       }      
@@ -859,8 +760,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
   } 
 
   if (countParens != 0 && countIfs != 0 && countWhiles != 0 && countUntils != 0){
-    fprintf(stderr, "%s\n", "Error in tokens_to_command_stream(): out of while loop, closing pairs don't match");
-    exit(1);
+    writeError("commandBuilder()", NULL);
   }
 
   c_push(cmdTemp1, &top, &c_stackSize);
@@ -879,8 +779,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
   cmdTemp1 = NULL;
 
   if (c_pop(&top) != NULL){
-    fprintf(stderr, "%s\n","Error in tokens_to_command_stream(): c_stack should be empty");
-    exit(1);
+    writeError("commandBuilder()", NULL);
   }
 
   return csTemp2;
@@ -888,38 +787,7 @@ command_stream_t tokens_to_command_stream(token_stream_t tStream)
 } 
 
 
-void c_push(command_t item, int *top, size_t *size)
-{
-  if (item == NULL)
-    return;
 
-  // Empty stack has top at -1
-  if (*size <= (*top + 1) * sizeof(command_t))
-    c_stack = (command_t *) checked_grow_alloc(c_stack, size);
-
-  (*top)++;
-  c_stack[*top] = item;
-
-  // printf("PUSHED in a COMMAND of type %d into c_stack[%d]\n", item->type, 
-  // *top);
-}
-
-
-command_t 
-c_pop(int *top)
-{
-  if (*top == -1) // If c_stack is empty
-    return NULL;
-
-  command_t item = NULL;
-  item = c_stack[*top];
-  
-  // printf("POPPED out a COMMAND of type %d out of c_stack[%d]\n", 
-  // item->type, *top);
-
-  (*top)--;
-  return item;
-}
 
 int check_if_word(char c) {
     if (isalnum(c) || (c == '!') || (c == '%') || (c == '!') || (c == '+') || (c == '-') || (c == ',') || (c == '.') || (c == '/') || (c == ':') || (c == '@') || (c == '^') || (c == '_'))
