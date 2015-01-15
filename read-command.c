@@ -93,10 +93,8 @@ void c_push(command_t item, size_t *size, struct CStack *cstack)
 {
   if (item == NULL)
     return;
-  // Empty stack has top at -1
   if (*size <= (cstack->top) * sizeof(command_t))
     cstack->c_stack = (command_t *) checked_grow_alloc(cstack->c_stack, size);
-
   (cstack->top)++;
   cstack->c_stack[cstack->top] = item;
 
@@ -107,13 +105,8 @@ command_t c_pop(struct CStack *cstack)
 {
   if (cstack->top == 0)
     return NULL;
-
   command_t item = NULL;
   item = cstack->c_stack[cstack->top];
-  
-  // printf("POPPED out a COMMAND of type %d out of c_stack[%d]\n", 
-  // item->type, *top);
-
   (cstack->top)--;
   return item;
 }
