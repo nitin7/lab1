@@ -82,39 +82,43 @@ token_stream_t ts_pop(TStack *stack_t)
     return top;
 }
 
-void c_push(command_t item, int *top, size_t *size)
+struct CStack {
+    command_t *c_stack;
+    int top;
+};
+
+typedef struct CStack CStack;
+
+void c_push(command_t item, size_t *size, struct CStack *cstack)
 {
   if (item == NULL)
     return;
   // Empty stack has top at -1
-  if (*size <= (*top + 1) * sizeof(command_t))
-    c_stack = (command_t *) checked_grow_alloc(c_stack, size);
+  if (*size <= (cstack->top) * sizeof(command_t))
+    cstack->c_stack = (command_t *) checked_grow_alloc(cstack->c_stack, size);
 
-  (*top)++;
-  c_stack[*top] = item;
+  (cstack->top)++;
+  cstack->c_stack[cstack->top] = item;
 
 }
 
 
-command_t 
-c_pop(int *top)
+command_t c_pop(struct CStack *cstack)
 {
-  if (*top == -1)
+  if (cstack->top == 0)
     return NULL;
 
   command_t item = NULL;
-  item = c_stack[*top];
+  item = cstack->c_stack[cstack->top];
   
   // printf("POPPED out a COMMAND of type %d out of c_stack[%d]\n", 
   // item->type, *top);
 
-  (*top)--;
+  (cstack->top)--;
   return item;
 }
 
 
-void c_push(command_t item, int *top, size_t *size);
-command_t c_pop(int *top);
 
 //Parsing
 char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argument);
@@ -500,9 +504,10 @@ command_stream_t commandBuilder(token_stream_t tStream){
   size_t countWords = 0;
   size_t maxWord = 150;
 
-  int top = -1;
   size_t c_stackSize = 10 * sizeof(command_t);
-  c_stack = (command_t *) checked_malloc(c_stackSize);
+  CStack *cstack = checked_malloc(sizeof(CStack));
+  cstack->c_stack = (command_t *) checked_malloc(c_stackSize);
+  cstack->top = 0;
 
   while (tsCur != NULL)
   {
@@ -541,13 +546,13 @@ command_stream_t commandBuilder(token_stream_t tStream){
       *(++word) = NULL; 
 
     }else if (ttCur == SEMICOLON){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
 
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
-        cmdB = c_pop(&top);
-        cmdA = c_pop(&top);
+        cmdB = c_pop( cstack);
+        cmdA = c_pop(cstack);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
-        c_push(cmdTemp1, &top, &c_stackSize);
+        c_push(cmdTemp1, &c_stackSize, cstack);
       }
       cmdTemp1 = NULL;
       word = NULL;
@@ -557,19 +562,19 @@ command_stream_t commandBuilder(token_stream_t tStream){
       }
 
     }else if (ttCur == PIPE){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
-        cmdB = c_pop(&top);
-        cmdA = c_pop(&top);
+        cmdB = c_pop( cstack);
+        cmdA = c_pop( cstack);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
-        c_push(cmdTemp1, &top, &c_stackSize);
+        c_push(cmdTemp1,  &c_stackSize, cstack);
       }
       cmdTemp1 = cmdB = cmdA = NULL;
       word = NULL;
       ts_push(ts_stack, tsCur);
 
     }else if (ttCur == OPEN_PAREN){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
       cmdTemp1 = NULL;
       word = NULL;
       countParens++;
@@ -577,14 +582,14 @@ command_stream_t commandBuilder(token_stream_t tStream){
 
     }else if (ttCur == CLOSE_PAREN){
       if (countParens != 0) {
-        c_push(cmdTemp1, &top, &c_stackSize);
+        c_push(cmdTemp1, &c_stackSize, cstack);
         countParens--;
         while (ts_peek(ts_stack) != OPEN_PAREN){
           if (ts_peek(ts_stack) != OTHER){
-            cmdB = c_pop(&top);
-            cmdA = c_pop(&top);
+            cmdB = c_pop( cstack);
+            cmdA = c_pop( cstack);
             cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));  
-            c_push(cmdTemp1, &top, &c_stackSize);
+            c_push(cmdTemp1,  &c_stackSize, cstack);
             cmdTemp1 = NULL;         
           }else{
             writeError("commandBuilder()", NULL);
@@ -597,8 +602,8 @@ command_stream_t commandBuilder(token_stream_t tStream){
         cmdTemp2->input = NULL;
         cmdTemp2->output = NULL;
         cmdTemp2->type = SUBSHELL_COMMAND;
-        cmdTemp2->u.command[0] = c_pop(&top); 
-        c_push(cmdTemp2, &top, &c_stackSize);
+        cmdTemp2->u.command[0] = c_pop( cstack); 
+        c_push(cmdTemp2,  &c_stackSize, cstack);
         cmdTemp1 = cmdTemp2 = NULL;
         word = NULL;
         ts_pop(ts_stack); 
@@ -607,17 +612,17 @@ command_stream_t commandBuilder(token_stream_t tStream){
       }
       
     }else if (ttCur == LESS_THAN || ttCur == GREATER_THAN){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1,  &c_stackSize, cstack);
       if (tsNext == NULL || tsNext->token_node.type != WORD){
         writeError("commandBuilder()", NULL);   
       }else{
-        cmdTemp1 = c_pop(&top);
+        cmdTemp1 = c_pop( cstack);
         if (cmdTemp1 != NULL) {
           if (tsCur->token_node.type == GREATER_THAN)
             cmdTemp1->output = tsNext->token_node.t_word;
           else if (tsCur->token_node.type == LESS_THAN)
             cmdTemp1->input = tsNext->token_node.t_word;
-          c_push(cmdTemp1, &top, &c_stackSize);
+          c_push(cmdTemp1,  &c_stackSize, cstack);
           cmdTemp1 = NULL;
           word = NULL;
           tsCur = tsNext; 
@@ -629,7 +634,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       }
 
     }else if (ttCur == WHILE || ttCur == UNTIL || ttCur == IF){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1,  &c_stackSize, cstack);
       cmdTemp1 = NULL;
       word = NULL;
       if (tsCur->token_node.type == UNTIL)
@@ -641,7 +646,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       ts_push(ts_stack, tsCur);
 
     }else if (ttCur == THEN || ttCur == ELSE || ttCur == DO){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
       cmdTemp1 = NULL;
       word = NULL;
       ts_push(ts_stack, tsCur);
@@ -650,13 +655,13 @@ command_stream_t commandBuilder(token_stream_t tStream){
       if (countUntils == 0 && countWhiles == 0) {
         writeError("commandBuilder()", NULL);
       }
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
 
       enum token_type ttTemp1 = ts_peek(ts_stack);
       if (ttTemp1 == OTHER){
         writeError("commandBuilder()", NULL);
       }else if (ttTemp1 == DO){
-        cmdTemp1 = c_pop(&top);
+        cmdTemp1 = c_pop( cstack);
         ts_pop(ts_stack);
       }
 
@@ -664,7 +669,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       if (ttTemp1 == OTHER ){
         writeError("commandBuilder()", NULL);
       }else if (ttTemp1 == WHILE || ttTemp1 == UNTIL){
-        cmdTemp2 = c_pop(&top);
+        cmdTemp2 = c_pop( cstack);
       }
       
       size_t struct_command_size = sizeof(struct command);
@@ -684,7 +689,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       cmdTemp3->u.command[0] = cmdTemp2;
       cmdTemp3->u.command[1] = cmdTemp1;
             
-      c_push(cmdTemp3, &top, &c_stackSize);
+      c_push(cmdTemp3, &c_stackSize, cstack);
 
       cmdTemp1 = cmdTemp2 = cmdTemp3 = NULL;
       word = NULL;
@@ -694,13 +699,13 @@ command_stream_t commandBuilder(token_stream_t tStream){
       if (countIfs == 0){
         writeError("commandBuilder()", NULL);
       }
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1,  &c_stackSize, cstack);
 
       enum token_type ttTemp2 = ts_peek(ts_stack);
       if (ttTemp2 == OTHER ){
         writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == ELSE){
-        cmdC = c_pop(&top);
+        cmdC = c_pop( cstack);
         ts_pop(ts_stack);
       }
 
@@ -708,7 +713,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       if (ttTemp2 == OTHER){
         writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == THEN){
-        cmdB = c_pop(&top);
+        cmdB = c_pop( cstack);
         ts_pop(ts_stack);
       }
       
@@ -716,7 +721,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       if (ttTemp2 == OTHER){
         writeError("commandBuilder()", NULL);
       }else if (ttTemp2 == IF){
-        cmdA = c_pop(&top);
+        cmdA = c_pop( cstack);
       }      
 
       size_t struct_command_size = sizeof(struct command);
@@ -733,7 +738,7 @@ command_stream_t commandBuilder(token_stream_t tStream){
       cmdTemp1->u.command[0] = cmdA;
       cmdTemp1->u.command[1] = cmdB; 
 
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
       countIfs--; 
 
       cmdA = cmdB = cmdC = cmdTemp1 = NULL;
@@ -741,16 +746,16 @@ command_stream_t commandBuilder(token_stream_t tStream){
       ts_pop(ts_stack); 
 
     }else if (ttCur == NEW_LINE){
-      c_push(cmdTemp1, &top, &c_stackSize);
+      c_push(cmdTemp1, &c_stackSize, cstack);
       while (precedence(ts_peek(ts_stack), 1) > precedence(tsCur->token_node.type, 0)){
-        cmdB = c_pop(&top);
-        cmdA = c_pop(&top);
+        cmdB = c_pop( cstack);
+        cmdA = c_pop(cstack);
         cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
-        c_push(cmdTemp1, &top, &c_stackSize);
+        c_push(cmdTemp1, &c_stackSize, cstack);
       }
       if (countParens == 0 && countIfs == 0 && countWhiles == 0 && countUntils == 0){
         csTemp1 = (command_stream_t) checked_malloc(sizeof(struct command_stream));
-        csTemp1->command_node = c_pop(&top);
+        csTemp1->command_node = c_pop( cstack);
         csTemp2 = combineStreams(csTemp2, csTemp1);
       }
       cmdTemp1 = NULL;
@@ -763,22 +768,22 @@ command_stream_t commandBuilder(token_stream_t tStream){
     writeError("commandBuilder()", NULL);
   }
 
-  c_push(cmdTemp1, &top, &c_stackSize);
+  c_push(cmdTemp1, &c_stackSize, cstack);
   
   while (ts_peek(ts_stack) != OTHER){
-    cmdB = c_pop(&top);
-    cmdA = c_pop(&top);
+    cmdB = c_pop( cstack);
+    cmdA = c_pop( cstack);
     cmdTemp1 = combine_commands(cmdA, cmdB, ts_pop(ts_stack));
-    c_push(cmdTemp1, &top, &c_stackSize);
+    c_push(cmdTemp1,  &c_stackSize, cstack);
   }
 
   csTemp1 = (command_stream_t) checked_malloc(sizeof(struct command_stream));
-  csTemp1->command_node = c_pop(&top);
+  csTemp1->command_node = c_pop( cstack);
 
   csTemp2 = combineStreams(csTemp2, csTemp1);
   cmdTemp1 = NULL;
 
-  if (c_pop(&top) != NULL){
+  if (c_pop( cstack) != NULL){
     writeError("commandBuilder()", NULL);
   }
 
