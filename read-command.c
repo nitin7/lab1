@@ -467,17 +467,18 @@ void checkSyntax(struct token_stream *token_str){
                 case UNTIL:
                     if (next_token == SEMICOLON || next_token_stream == NULL)
                         writeError("checkSyntax()", cur_token_stream);
+                    enum token_type cur_type = cur_token_stream->token_node.type;
                     if (prev_tokens == WORD)
                         cur_token_stream->token_node.type = WORD;
-                    if (cur_token_stream->token_node.type == IF)
+                    if (cur_type == IF)
                         ifCount++;
-                    else if (cur_token_stream->token_node.type == FI)
+                    else if (cur_type == FI)
                         ifCount--;
-                    else if (cur_token_stream->token_node.type == DONE)
+                    else if (cur_type == DONE)
                         doneCount--;
-                    else if (cur_token_stream->token_node.type == UNTIL)
+                    else if (cur_type == UNTIL)
                         doneCount++;
-                    else if (cur_token_stream->token_node.type == WHILE)
+                    else if (cur_type == WHILE)
                         doneCount++;
                     break;
                 default:
@@ -490,6 +491,7 @@ void checkSyntax(struct token_stream *token_str){
     if(doneCount != 0 || ifCount != 0 || parensCount != 0)
         writeError("checkSyntax()", cur_token_stream);
 }
+
 
 command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
     
@@ -840,4 +842,3 @@ command_t read_command_stream (command_stream_t s){
     }
     return NULL;
 }
-
