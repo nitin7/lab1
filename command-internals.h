@@ -15,6 +15,27 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+enum token_type
+  {
+    IF,
+    FI,
+    ELSE,
+    THEN,
+    WHILE,
+    DO,
+    DONE,
+    UNTIL,
+    SEMICOLON,
+    PIPE,
+    OPEN_PAREN,
+    CLOSE_PAREN,
+    LESS_THAN,
+    GREATER_THAN,
+    WORD,
+    NEW_LINE,
+    OTHER
+  };
+
 enum command_type
   {
     IF_COMMAND,		 // if A then B else C fi
@@ -47,61 +68,6 @@ struct command
     // Only IF_COMMAND uses all three entries.
     struct command *command[3];
   } u;
-};
-
-struct command_stream
-{
-  int number;
-  int iterator;
-
-  struct command *command_node;
-  struct command_stream *prev;
-  struct command_stream *next;
-};
-
-///////////////////////////////////////////////////////////////////////////////
-// TOKEN
-///////////////////////////////////////////////////////////////////////////////
-
-enum token_type
-  {
-    IF,
-    FI,
-    ELSE,
-    THEN,
-    WHILE,
-    DO,
-    DONE,
-    UNTIL,
-    SEMICOLON,
-    PIPE,
-    OPEN_PAREN,
-    CLOSE_PAREN,
-    LESS_THAN,
-    GREATER_THAN,
-    WORD,
-    NEW_LINE,
-    OTHER
-  };
-
-struct token
-{
-  enum token_type type;
-  char *t_word;
-  int line_no;
-  int token_len;
-};
-
-///////////////////////////////////////////////////////////////////////////////
-// TOKEN_STREAM
-///////////////////////////////////////////////////////////////////////////////
-
-struct token_stream
-{
-  struct token token_node;
-
-  struct token_stream *prev;
-  struct token_stream *next;
 };
 
 

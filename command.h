@@ -15,11 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+typedef struct token_struct *token_t;
+typedef struct token_stream *token_stream_t;
+
 typedef struct command *command_t;
 typedef struct command_stream *command_stream_t;
-
-typedef struct token *token_t;
-typedef struct token_stream *token_stream_t;
 
 /* Create a command stream from GETBYTE and ARG.  A reader of
    the command stream will invoke GETBYTE (ARG) to get the next byte.
