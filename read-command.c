@@ -143,6 +143,8 @@ void writeError(char* funcName, struct token_stream *cur){
     exit(1);
 }
 
+
+
 char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argument){
     size_t n, buf_size;
     char next_byte;
@@ -178,14 +180,14 @@ char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argume
     return buf;
 }
 
-token_stream_t make_tokens_from_bytes(char *buf){
+token_stream_t make_tokens_from_bytes(char *buf, int size){
     struct token_stream *head = NULL;
     struct token_stream *ptr = head;
     char* itr = buf;
     int nLines = 1;
     char ch;
     enum token_type tk_type;
-    
+    size--;
     while (*itr != '\0')
     {
         ch = *itr;
@@ -247,10 +249,10 @@ token_stream_t make_tokens_from_bytes(char *buf){
         
         tk_stream->prev = NULL;
         tk_stream->next = NULL;
-        tk_stream->token_node.type = tk_type;
+
         tk_stream->token_node.token_len = word_n_chars;
         tk_stream->token_node.line_no = nLines;
-        
+        tk_stream->token_node.type = tk_type;
         
         if (tk_type == NEW_LINE)
             tk_stream->token_node.line_no = nLines - 1;
@@ -262,25 +264,26 @@ token_stream_t make_tokens_from_bytes(char *buf){
                 tk_stream->token_node.token_val[k] = *(word_start_itr + k);
             
             tk_stream->token_node.token_val[word_n_chars] = '\0';
-            
-            if (strcmp(tk_stream->token_node.token_val, "if") == 0) {
+
+            char* tokenVal = tk_stream->token_node.token_val;
+
+            if (strcmp(tokenVal, "if") == 0) {
                 tk_stream->token_node.type = IF;
-            } else if (strcmp(tk_stream->token_node.token_val, "then") == 0) {
+            } else if (strcmp(tokenVal, "then") == 0) {
                 tk_stream->token_node.type = THEN;
-            } else if (strcmp(tk_stream->token_node.token_val, "else") == 0) {
+            } else if (strcmp(tokenVal, "else") == 0) {
                 tk_stream->token_node.type = ELSE;
-            } else if (strcmp(tk_stream->token_node.token_val, "fi") == 0) {
+            } else if (strcmp(tokenVal, "fi") == 0) {
                 tk_stream->token_node.type = FI;
-            } else if (strcmp(tk_stream->token_node.token_val, "while") == 0) {
+            } else if (strcmp(tokenVal, "while") == 0) {
                 tk_stream->token_node.type = WHILE;
-            } else if (strcmp(tk_stream->token_node.token_val, "do") == 0) {
+            } else if (strcmp(tokenVal, "do") == 0) {
                 tk_stream->token_node.type = DO;
-            } else if (strcmp(tk_stream->token_node.token_val, "done") == 0) {
+            } else if (strcmp(tokenVal, "done") == 0) {
                 tk_stream->token_node.type = DONE;
-            } else if (strcmp(tk_stream->token_node.token_val, "until") == 0) {
+            } else if (strcmp(tokenVal, "until") == 0) {
                 tk_stream->token_node.type = UNTIL;
             }
-            
         }
         else
             tk_stream->token_node.token_val = NULL;
@@ -808,7 +811,13 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
 command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_next_byte_argument){
     char *buf = read_into_buffer(get_next_byte, get_next_byte_argument);
     token_stream_t tk_stream;
-    tk_stream = make_tokens_from_bytes(buf);
+    int size = 0;
+    char* iter = buf;
+    while (*iter != '\0') {
+        size++;
+        iter++;
+    }
+    tk_stream = make_tokens_from_bytes(buf, size);
     command_stream_t c_stream;
     if (tk_stream != NULL){
         checkSyntax(tk_stream);
