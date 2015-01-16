@@ -148,11 +148,12 @@ void writeError(char* funcName, struct token_stream *cur){
 char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argument){
     size_t n, buf_size;
     char next_byte;
-    
+    char *buf;
+
     buf_size = 1024;
     n = 0;
     
-    char *buf = (char *) checked_malloc(sizeof (char) * buf_size);
+    buf = (char *) checked_malloc(sizeof(char)*buf_size);
     
     while ((next_byte = get_next_byte(get_next_byte_argument)) != EOF) {
         
@@ -161,7 +162,6 @@ char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argume
             while (next_byte != '\n' && next_byte != EOF)
                 next_byte = get_next_byte(get_next_byte_argument);
         }
-        
         if (next_byte != EOF) {
             buf[n] = next_byte;
             n++;
@@ -176,7 +176,7 @@ char* read_into_buffer(int (*get_next_byte) (void *), void *get_next_byte_argume
         buf = (char *) checked_grow_alloc(buf, &buf_size);
         buf[n] = '\0';
     }
-    
+
     return buf;
 }
 
@@ -215,14 +215,14 @@ token_stream_t make_tokens_from_bytes(char *buf, int size){
         else if (ch == ';') {
             tk_type = SEMICOLON;
         }
-        else if (ch == '|') {
-            tk_type = PIPE;
+        else if (ch == ')') {
+            tk_type = CLOSE_PAREN;
         }
         else if (ch == '(') {
             tk_type = OPEN_PAREN;
         }
-        else if (ch == ')') {
-            tk_type = CLOSE_PAREN;
+        else if (ch == '|') {
+            tk_type = PIPE;
         }
         else if (ch == '>') {
             tk_type = GREATER_THAN;
@@ -364,44 +364,46 @@ int calcPVal(int multiplier, int stack){
     return value;
 }
 
-int precedence(enum token_type type, int stack){
+int determineOrder(enum token_type type_of_token, int stack){
+    int val;
     if(stack){
-        if (type == ELSE){
-            return calcPVal(0, stack);
-        }else if (type == GREATER_THAN || type == LESS_THAN){
-            return calcPVal(5, stack);
-        }else if (type == PIPE){
-            return calcPVal(6, stack);
-        }else if (type == SEMICOLON || type == NEW_LINE){
-            return calcPVal(7, stack);
-        }else if (type == DO || type == THEN){
-            return calcPVal(-1, stack);
-        }else if (type == IF || type == WHILE || type == UNTIL){
-            return calcPVal(-2, stack);
-        }else if (type == OPEN_PAREN){
-            return calcPVal(-3, stack);
+        if (type_of_token == ELSE){
+            val = calcPVal(0, stack);
+        }else if (type_of_token == GREATER_THAN || type_of_token == LESS_THAN){
+            val = calcPVal(5, stack);
+        }else if (type_of_token == PIPE){
+            val = calcPVal(6, stack);
+        }else if (type_of_token == SEMICOLON || type_of_token == NEW_LINE){
+            val = calcPVal(7, stack);
+        }else if (type_of_token == DO || type_of_token == THEN){
+            val = calcPVal(-1, stack);
+        }else if (type_of_token == IF || type_of_token == WHILE || type_of_token == UNTIL){
+            val = calcPVal(-2, stack);
+        }else if (type_of_token == OPEN_PAREN){
+            val = calcPVal(-3, stack);
         }else{
-            return calcPVal(-5, stack);
+            val = calcPVal(-5, stack);
         }
     }else{
-        if (type == ELSE){
-            return calcPVal(6, stack);
-        }else if (type == GREATER_THAN || type == LESS_THAN){
-            return calcPVal(3, stack);
-        }else if (type == PIPE){
-            return calcPVal(2, stack);
-        }else if (type == SEMICOLON || type == NEW_LINE){
-            return calcPVal(1, stack);
-        }else if (type == DO || type == THEN){
-            return calcPVal(7, stack);
-        }else if (type == IF || type == WHILE || type == UNTIL){
-            return calcPVal(8, stack);
-        }else if (type == OPEN_PAREN){
-            return calcPVal(9, stack);
+        if (type_of_token == ELSE){
+            val = calcPVal(6, stack);
+        }else if (type_of_token == GREATER_THAN || type_of_token == LESS_THAN){
+            val = calcPVal(3, stack);
+        }else if (type_of_token == PIPE){
+            val = calcPVal(2, stack);
+        }else if (type_of_token == SEMICOLON || type_of_token == NEW_LINE){
+            val = calcPVal(1, stack);
+        }else if (type_of_token == DO || type_of_token == THEN){
+            val = calcPVal(7, stack);
+        }else if (type_of_token == IF || type_of_token == WHILE || type_of_token == UNTIL){
+            val = calcPVal(8, stack);
+        }else if (type_of_token == OPEN_PAREN){
+            val = calcPVal(9, stack);
         }else{
-            return calcPVal(-5, stack);
+            val = calcPVal(-5, stack);
         }
     }
+    return val;
 }
 
 void checkSyntax(struct token_stream *token_str){
@@ -496,9 +498,9 @@ void checkSyntax(struct token_stream *token_str){
 command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
     
     size_t size_of_stack = STACK_MAX * sizeof(command_t);
-    CStack *stack_of_cmd_ptrs = checked_malloc(sizeof(CStack));
-    stack_of_cmd_ptrs->c_stack = (command_t *) checked_malloc(size_of_stack);
-    stack_of_cmd_ptrs->top = 0;
+    CStack *stack_of_commandPtr_ptrs = checked_malloc(sizeof(CStack));
+    stack_of_commandPtr_ptrs->c_stack = (command_t *) checked_malloc(size_of_stack);
+    stack_of_commandPtr_ptrs->top = 0;
     
     TStack* stack_of_token_streams = checked_malloc(sizeof(TStack));
     stack_of_token_streams->n_items = 0;
@@ -506,17 +508,17 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
     char **word = NULL;
     enum token_type tokenNext;
     
-    token_stream_t tsCur = token_struct_ptr;
-    token_stream_t tsNext = NULL;
-    token_stream_t tsPrev = NULL;
+    token_stream_t cur_token_stream = token_struct_ptr;
+    token_stream_t next_token_stream = NULL;
+    token_stream_t prev_token_stream = NULL;
     
-    command_t cmdTemp1 = NULL;
-    command_t cmdTemp2 = NULL;
-    command_t cmdTemp3 = NULL;
+    command_t commandPtr1 = NULL;
+    command_t commandPtr2 = NULL;
+    command_t commandPtr3 = NULL;
     
-    command_t cmdA = NULL;
-    command_t cmdB = NULL;
-    command_t cmdC = NULL;
+    command_t commandPtrA = NULL;
+    command_t commandPtrB = NULL;
+    command_t commandPtrC = NULL;
     
     command_stream_t csTemp1 = NULL;
     command_stream_t csTemp2 = NULL;
@@ -528,103 +530,103 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
     
     size_t countWords = 0;
     size_t maxWord = 150;
-    
-    while (tsCur != NULL)
+
+    while (cur_token_stream != NULL)
     {
-        tsPrev = tsCur->prev;
-        tsNext = tsCur->next;
-        if (tsNext != NULL)
-            tokenNext = tsNext->token_node.type;
+        prev_token_stream = cur_token_stream->prev;
+        next_token_stream = cur_token_stream->next;
+        if (next_token_stream != NULL)
+            tokenNext = next_token_stream->token_node.type;
         
-        enum token_type ttCur = tsCur->token_node.type;
+        enum token_type ttCur = cur_token_stream->token_node.type;
         
         if(ttCur == WORD){
-            if (cmdTemp1 == NULL){
+            if (commandPtr1 == NULL){
                 countWords = 0;
                 size_t struct_command_size = sizeof(struct command);
-                cmdTemp1 = (command_t) checked_malloc(struct_command_size);
-                cmdTemp1->status = -1;
-                cmdTemp1->type = SIMPLE_COMMAND;
-                cmdTemp1->u.word = NULL;
-                cmdTemp1->input = NULL;
-                cmdTemp1->output = NULL;
+                commandPtr1 = (command_t) checked_malloc(struct_command_size);
+                commandPtr1->status = -1;
+                commandPtr1->type = SIMPLE_COMMAND;
+                commandPtr1->u.word = NULL;
+                commandPtr1->input = NULL;
+                commandPtr1->output = NULL;
                 word = (char **) checked_malloc(maxWord * sizeof(char *));
-                cmdTemp1->u.word = word;
+                commandPtr1->u.word = word;
             }
             if (countWords == maxWord - 1){
                 maxWord += 50 * sizeof(char *);
-                cmdTemp1->u.word = (char **) checked_grow_alloc(cmdTemp1->u.word, &maxWord);
-                word = cmdTemp1->u.word;
+                commandPtr1->u.word = (char **) checked_grow_alloc(commandPtr1->u.word, &maxWord);
+                word = commandPtr1->u.word;
                 size_t i;
                 for (i=0;i < countWords; i++){
-                    word = ((cmdTemp1->u.word)++);
+                    word = ((commandPtr1->u.word)++);
                 }
                 maxWord++;
             }
-            *word = tsCur->token_node.token_val;
+            *word = cur_token_stream->token_node.token_val;
             countWords++;
             *(++word) = NULL;
             
         }else if (ttCur == SEMICOLON){
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
             
-            while (precedence(top_token_stack(stack_of_token_streams), 1) > precedence(tsCur->token_node.type, 0)){
-                cmdB = pop_command_stack( stack_of_cmd_ptrs);
-                cmdA = pop_command_stack(stack_of_cmd_ptrs);
-                cmdTemp1 = join(pop_token_stack(stack_of_token_streams), cmdA, cmdB);
-                push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+            while (determineOrder(top_token_stack(stack_of_token_streams), 1) > determineOrder(cur_token_stream->token_node.type, 0)){
+                commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
+                commandPtrA = pop_command_stack(stack_of_commandPtr_ptrs);
+                commandPtr1 = join(pop_token_stack(stack_of_token_streams), commandPtrA, commandPtrB);
+                push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
             }
-            cmdTemp1 = NULL;
+            commandPtr1 = NULL;
             word = NULL;
             if (tokenNext != THEN && tokenNext != ELSE && tokenNext != FI && tokenNext != DO &&
                 tokenNext != DONE){
-                push_token_stack(stack_of_token_streams, tsCur);
+                push_token_stack(stack_of_token_streams, cur_token_stream);
             }
             
         }else if (ttCur == PIPE){
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
-            while (precedence(top_token_stack(stack_of_token_streams), 1) > precedence(tsCur->token_node.type, 0)){
-                cmdB = pop_command_stack( stack_of_cmd_ptrs);
-                cmdA = pop_command_stack( stack_of_cmd_ptrs);
-                cmdTemp1 = join(pop_token_stack(stack_of_token_streams), cmdA, cmdB);
-                push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
+            while (determineOrder(top_token_stack(stack_of_token_streams), 1) > determineOrder(cur_token_stream->token_node.type, 0)){
+                commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
+                commandPtrA = pop_command_stack( stack_of_commandPtr_ptrs);
+                commandPtr1 = join(pop_token_stack(stack_of_token_streams), commandPtrA, commandPtrB);
+                push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
             }
-            cmdTemp1 = cmdB = cmdA = NULL;
+            commandPtr1 = commandPtrB = commandPtrA = NULL;
             word = NULL;
-            push_token_stack(stack_of_token_streams, tsCur);
+            push_token_stack(stack_of_token_streams, cur_token_stream);
             
         }else if (ttCur == OPEN_PAREN){
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
-            cmdTemp1 = NULL;
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
+            commandPtr1 = NULL;
             word = NULL;
             countParens++;
-            push_token_stack(stack_of_token_streams, tsCur);
+            push_token_stack(stack_of_token_streams, cur_token_stream);
             
         }else if (ttCur == CLOSE_PAREN){
             if (countParens != 0) {
-                push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+                push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
                 countParens--;
                 while (top_token_stack(stack_of_token_streams) != OPEN_PAREN){
                     if (top_token_stack(stack_of_token_streams) != OTHER){
-                        cmdB = pop_command_stack( stack_of_cmd_ptrs);
-                        cmdA = pop_command_stack( stack_of_cmd_ptrs);
-                        cmdTemp1 = join(pop_token_stack(stack_of_token_streams), cmdA, cmdB);
-                        push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
-                        cmdTemp1 = NULL;
+                        commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
+                        commandPtrA = pop_command_stack( stack_of_commandPtr_ptrs);
+                        commandPtr1 = join(pop_token_stack(stack_of_token_streams), commandPtrA, commandPtrB);
+                        push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
+                        commandPtr1 = NULL;
                     }else{
                         writeError("commandBuilder()", NULL);
                     }
                 }
                 size_t struct_command_size = sizeof(struct command);
-                cmdTemp2 = (command_t) checked_malloc(struct_command_size);
-                cmdTemp2->status = -1;
-                cmdTemp2->u.word = NULL;
-                cmdTemp2->input = NULL;
-                cmdTemp2->output = NULL;
-                cmdTemp2->type = SUBSHELL_COMMAND;
-                cmdTemp2->u.command[0] = pop_command_stack( stack_of_cmd_ptrs);
-                push_command_stack(cmdTemp2,  &size_of_stack, stack_of_cmd_ptrs);
-                cmdTemp1 = cmdTemp2 = NULL;
+                commandPtr2 = (command_t) checked_malloc(struct_command_size);
+                commandPtr2->status = -1;
+                commandPtr2->u.word = NULL;
+                commandPtr2->input = NULL;
+                commandPtr2->output = NULL;
+                commandPtr2->type = SUBSHELL_COMMAND;
+                commandPtr2->u.command[0] = pop_command_stack( stack_of_commandPtr_ptrs);
+                push_command_stack(commandPtr2,  &size_of_stack, stack_of_commandPtr_ptrs);
+                commandPtr1 = commandPtr2 = NULL;
                 word = NULL;
                 pop_token_stack(stack_of_token_streams);
             }else{
@@ -632,56 +634,56 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
             }
             
         }else if (ttCur == LESS_THAN || ttCur == GREATER_THAN){
-            push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
-            if (tsNext == NULL || tsNext->token_node.type != WORD){
+            push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
+            if (next_token_stream == NULL || next_token_stream->token_node.type != WORD){
                 writeError("commandBuilder()", NULL);
             }else{
-                cmdTemp1 = pop_command_stack( stack_of_cmd_ptrs);
-                if (cmdTemp1 != NULL) {
-                    if (tsCur->token_node.type == GREATER_THAN)
-                        cmdTemp1->output = tsNext->token_node.token_val;
-                    else if (tsCur->token_node.type == LESS_THAN)
-                        cmdTemp1->input = tsNext->token_node.token_val;
-                    push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
-                    cmdTemp1 = NULL;
+                commandPtr1 = pop_command_stack( stack_of_commandPtr_ptrs);
+                if (commandPtr1 != NULL) {
+                    if (cur_token_stream->token_node.type == GREATER_THAN)
+                        commandPtr1->output = next_token_stream->token_node.token_val;
+                    else if (cur_token_stream->token_node.type == LESS_THAN)
+                        commandPtr1->input = next_token_stream->token_node.token_val;
+                    push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
+                    commandPtr1 = NULL;
                     word = NULL;
-                    tsCur = tsNext;
-                    if (tsCur != NULL)
-                        tsNext = tsCur->next;
+                    cur_token_stream = next_token_stream;
+                    if (cur_token_stream != NULL)
+                        next_token_stream = cur_token_stream->next;
                 }else{
                     writeError("commandBuilder()", NULL);
                 }
             }
             
         }else if (ttCur == WHILE || ttCur == UNTIL || ttCur == IF){
-            push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
-            cmdTemp1 = NULL;
+            push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
+            commandPtr1 = NULL;
             word = NULL;
-            if (tsCur->token_node.type == UNTIL)
+            if (cur_token_stream->token_node.type == UNTIL)
                 countUntils++;
-            else if (tsCur->token_node.type == WHILE)
+            else if (cur_token_stream->token_node.type == WHILE)
                 countWhiles++;
             else
                 countIfs++;
-            push_token_stack(stack_of_token_streams, tsCur);
+            push_token_stack(stack_of_token_streams, cur_token_stream);
             
         }else if (ttCur == THEN || ttCur == ELSE || ttCur == DO){
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
-            cmdTemp1 = NULL;
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
+            commandPtr1 = NULL;
             word = NULL;
-            push_token_stack(stack_of_token_streams, tsCur);
+            push_token_stack(stack_of_token_streams, cur_token_stream);
             
         }else if (ttCur == DONE){
             if (countUntils == 0 && countWhiles == 0) {
                 writeError("commandBuilder()", NULL);
             }
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
             
             enum token_type ttTemp1 = top_token_stack(stack_of_token_streams);
             if (ttTemp1 == OTHER){
                 writeError("commandBuilder()", NULL);
             }else if (ttTemp1 == DO){
-                cmdTemp1 = pop_command_stack( stack_of_cmd_ptrs);
+                commandPtr1 = pop_command_stack( stack_of_commandPtr_ptrs);
                 pop_token_stack(stack_of_token_streams);
             }
             
@@ -689,29 +691,29 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
             if (ttTemp1 == OTHER ){
                 writeError("commandBuilder()", NULL);
             }else if (ttTemp1 == WHILE || ttTemp1 == UNTIL){
-                cmdTemp2 = pop_command_stack( stack_of_cmd_ptrs);
+                commandPtr2 = pop_command_stack( stack_of_commandPtr_ptrs);
             }
             
             size_t struct_command_size = sizeof(struct command);
-            cmdTemp3 = (command_t) checked_malloc(struct_command_size);
-            cmdTemp3->status = -1;
-            cmdTemp3->u.word = NULL;
-            cmdTemp3->input = NULL;
-            cmdTemp3->output = NULL;
+            commandPtr3 = (command_t) checked_malloc(struct_command_size);
+            commandPtr3->status = -1;
+            commandPtr3->u.word = NULL;
+            commandPtr3->input = NULL;
+            commandPtr3->output = NULL;
             ttTemp1 = top_token_stack(stack_of_token_streams);
             if (ttTemp1 != WHILE){
-                cmdTemp3->type = UNTIL_COMMAND;
+                commandPtr3->type = UNTIL_COMMAND;
                 countUntils--;
             }else{
-                cmdTemp3->type = WHILE_COMMAND;
+                commandPtr3->type = WHILE_COMMAND;
                 countWhiles--;
             }
-            cmdTemp3->u.command[0] = cmdTemp2;
-            cmdTemp3->u.command[1] = cmdTemp1;
+            commandPtr3->u.command[0] = commandPtr2;
+            commandPtr3->u.command[1] = commandPtr1;
             
-            push_command_stack(cmdTemp3, &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr3, &size_of_stack, stack_of_commandPtr_ptrs);
             
-            cmdTemp1 = cmdTemp2 = cmdTemp3 = NULL;
+            commandPtr1 = commandPtr2 = commandPtr3 = NULL;
             word = NULL;
             pop_token_stack(stack_of_token_streams);
             
@@ -719,13 +721,13 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
             if (countIfs == 0){
                 writeError("commandBuilder()", NULL);
             }
-            push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
             
             enum token_type ttTemp2 = top_token_stack(stack_of_token_streams);
             if (ttTemp2 == OTHER ){
                 writeError("commandBuilder()", NULL);
             }else if (ttTemp2 == ELSE){
-                cmdC = pop_command_stack( stack_of_cmd_ptrs);
+                commandPtrC = pop_command_stack( stack_of_commandPtr_ptrs);
                 pop_token_stack(stack_of_token_streams);
             }
             
@@ -733,7 +735,7 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
             if (ttTemp2 == OTHER){
                 writeError("commandBuilder()", NULL);
             }else if (ttTemp2 == THEN){
-                cmdB = pop_command_stack( stack_of_cmd_ptrs);
+                commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
                 pop_token_stack(stack_of_token_streams);
             }
             
@@ -741,69 +743,69 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
             if (ttTemp2 == OTHER){
                 writeError("commandBuilder()", NULL);
             }else if (ttTemp2 == IF){
-                cmdA = pop_command_stack( stack_of_cmd_ptrs);
+                commandPtrA = pop_command_stack( stack_of_commandPtr_ptrs);
             }
             
             size_t struct_command_size = sizeof(struct command);
-            cmdTemp1 = (command_t) checked_malloc(struct_command_size);
-            cmdTemp1->status = -1;
-            cmdTemp1->type = IF_COMMAND;
-            cmdTemp1->u.word = NULL;
-            cmdTemp1->input = NULL;
-            cmdTemp1->output = NULL;
-            if (cmdC == NULL)
-                cmdTemp1->u.command[2] = NULL;
+            commandPtr1 = (command_t) checked_malloc(struct_command_size);
+            commandPtr1->status = -1;
+            commandPtr1->type = IF_COMMAND;
+            commandPtr1->u.word = NULL;
+            commandPtr1->input = NULL;
+            commandPtr1->output = NULL;
+            if (commandPtrC == NULL)
+                commandPtr1->u.command[2] = NULL;
             else
-                cmdTemp1->u.command[2] = cmdC;
-            cmdTemp1->u.command[0] = cmdA;
-            cmdTemp1->u.command[1] = cmdB;
+                commandPtr1->u.command[2] = commandPtrC;
+            commandPtr1->u.command[0] = commandPtrA;
+            commandPtr1->u.command[1] = commandPtrB;
             
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
             countIfs--;
             
-            cmdA = cmdB = cmdC = cmdTemp1 = NULL;
+            commandPtrA = commandPtrB = commandPtrC = commandPtr1 = NULL;
             word = NULL;
             pop_token_stack(stack_of_token_streams);
             
         }else if (ttCur == NEW_LINE){
-            push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
-            while (precedence(top_token_stack(stack_of_token_streams), 1) > precedence(tsCur->token_node.type, 0)){
-                cmdB = pop_command_stack( stack_of_cmd_ptrs);
-                cmdA = pop_command_stack(stack_of_cmd_ptrs);
-                cmdTemp1 = join(pop_token_stack(stack_of_token_streams), cmdA, cmdB);
-                push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+            push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
+            while (determineOrder(top_token_stack(stack_of_token_streams), 1) > determineOrder(cur_token_stream->token_node.type, 0)){
+                commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
+                commandPtrA = pop_command_stack(stack_of_commandPtr_ptrs);
+                commandPtr1 = join(pop_token_stack(stack_of_token_streams), commandPtrA, commandPtrB);
+                push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
             }
             if (countParens == 0 && countIfs == 0 && countWhiles == 0 && countUntils == 0){
                 csTemp1 = (command_stream_t) checked_malloc(COMMAND_STREAM_SIZE);
-                csTemp1->command_node = pop_command_stack( stack_of_cmd_ptrs);
+                csTemp1->command_node = pop_command_stack( stack_of_commandPtr_ptrs);
                 csTemp2 = combineStreams(csTemp2, csTemp1);
             }
-            cmdTemp1 = NULL;
+            commandPtr1 = NULL;
             word = NULL;
         }
-        tsCur = tsNext;
+        cur_token_stream = next_token_stream;
     }
     
     if (countParens != 0 && countIfs != 0 && countWhiles != 0 && countUntils != 0){
         writeError("commandBuilder()", NULL);
     }
     
-    push_command_stack(cmdTemp1, &size_of_stack, stack_of_cmd_ptrs);
+    push_command_stack(commandPtr1, &size_of_stack, stack_of_commandPtr_ptrs);
     
     while (top_token_stack(stack_of_token_streams) != OTHER){
-        cmdB = pop_command_stack( stack_of_cmd_ptrs);
-        cmdA = pop_command_stack( stack_of_cmd_ptrs);
-        cmdTemp1 = join(pop_token_stack(stack_of_token_streams), cmdA, cmdB);
-        push_command_stack(cmdTemp1,  &size_of_stack, stack_of_cmd_ptrs);
+        commandPtrB = pop_command_stack( stack_of_commandPtr_ptrs);
+        commandPtrA = pop_command_stack( stack_of_commandPtr_ptrs);
+        commandPtr1 = join(pop_token_stack(stack_of_token_streams), commandPtrA, commandPtrB);
+        push_command_stack(commandPtr1,  &size_of_stack, stack_of_commandPtr_ptrs);
     }
     
     csTemp1 = (command_stream_t) checked_malloc(COMMAND_STREAM_SIZE);
-    csTemp1->command_node = pop_command_stack( stack_of_cmd_ptrs);
+    csTemp1->command_node = pop_command_stack( stack_of_commandPtr_ptrs);
     
     csTemp2 = combineStreams(csTemp2, csTemp1);
-    cmdTemp1 = NULL;
+    commandPtr1 = NULL;
     
-    if (pop_command_stack( stack_of_cmd_ptrs) != NULL){
+    if (pop_command_stack( stack_of_commandPtr_ptrs) != NULL){
         writeError("commandBuilder()", NULL);
     }
     
@@ -812,18 +814,16 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
 
 command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_next_byte_argument){
     char *buf = read_into_buffer(get_next_byte, get_next_byte_argument);
-    token_stream_t tk_stream;
     int size = 0;
     char* iter = buf;
     while (*iter != '\0') {
         size++;
         iter++;
     }
-    tk_stream = make_tokens_from_bytes(buf, size);
-    command_stream_t c_stream;
+    token_stream_t tk_stream = make_tokens_from_bytes(buf, size);
     if (tk_stream != NULL){
         checkSyntax(tk_stream);
-        c_stream = commandBuilder(tk_stream);
+        command_stream_t c_stream = commandBuilder(tk_stream);
         return c_stream;
     }
     return NULL;
