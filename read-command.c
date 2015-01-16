@@ -62,29 +62,29 @@ struct token_stream
 
 //-----COMMAND STACK----
 struct CStack {
-    command_t *c_stack;
-    int top;
+    command_t *command_stack;
+    int last_item;
 };
 
 typedef struct CStack CStack;
 
-void push_command_stack(struct command *cmd, size_t *size, struct CStack *cstack){
-    if (cmd != NULL){
-        if (*size <= (cstack->top) * sizeof(command_t))
-            cstack->c_stack = (command_t *) checked_grow_alloc(cstack->c_stack, size);
-        (cstack->top)++;
-        cstack->c_stack[cstack->top] = cmd;
+void push_command_stack(struct command *command, size_t *size, struct CStack *cstack){
+    if (command != NULL){
+        if (*size <= (cstack->last_item) * sizeof(command_t))
+            cstack->command_stack = (command_t *) checked_grow_alloc(cstack->command_stack, size);
+        (cstack->last_item)++;
+        cstack->command_stack[cstack->last_item] = command;
     }
 }
 
 command_t pop_command_stack(struct CStack *cstack){
-    command_t cmd = NULL;
-    if (cstack->top != 0){
-        cmd = cstack->c_stack[cstack->top];
-        (cstack->top)--;
-        return cmd;
+    command_t command = NULL;
+    if (cstack->last_item != 0){
+        command = cstack->command_stack[cstack->last_item];
+        (cstack->last_item)--;
+        return command;
     }
-    return cmd;
+    return command;
 }
 
 //-----TOKEN STACK-----
@@ -103,14 +103,9 @@ enum token_type top_token_stack(TStack *stack_t){
 }
 
 void push_token_stack(TStack *stack_t, struct token_stream *tks){
-    if (tks == NULL)
-        return;
-    
-    if (stack_t->n_items < STACK_MAX) {
+    if (tks != NULL && stack_t->n_items < STACK_MAX){        
         stack_t->tks[stack_t->n_items++] = tks;
     }
-    else
-        return;
 }
 
 token_stream_t pop_token_stack(TStack *stack_t){
@@ -118,8 +113,7 @@ token_stream_t pop_token_stack(TStack *stack_t){
     if (stack_t->n_items > 0) {
         top = stack_t->tks[stack_t->n_items - 1];
         stack_t->n_items--;
-    }
-    else {
+    }else {
         fprintf(stderr, "Error. Popping from empty stack.\n");
     }
     return top;
@@ -499,8 +493,8 @@ command_stream_t commandBuilder(struct token_stream *token_struct_ptr){
     
     size_t size_of_stack = STACK_MAX * sizeof(command_t);
     CStack *stack_of_commandPtr_ptrs = checked_malloc(sizeof(CStack));
-    stack_of_commandPtr_ptrs->c_stack = (command_t *) checked_malloc(size_of_stack);
-    stack_of_commandPtr_ptrs->top = 0;
+    stack_of_commandPtr_ptrs->command_stack = (command_t *) checked_malloc(size_of_stack);
+    stack_of_commandPtr_ptrs->last_item = 0;
     
     TStack* stack_of_token_streams = checked_malloc(sizeof(TStack));
     stack_of_token_streams->n_items = 0;
