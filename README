@@ -6,4 +6,4 @@ UID: 404178323
 Name: Ishan Roy Choudhury
 UID: 404195737
 
-At this point, we are not aware of any major limitations to our code. 
+Our implementation for this part of the lab involved reading in the input file into a buffer, parsing it and converting it into a list of tokens, making sure they were valid, and then converting them into a stream of commands. At this point, we are not aware of any major limitations to our code. 
