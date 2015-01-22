@@ -188,11 +188,7 @@ execute_if_command(command_t c,int fd){
 void
 execute_pipe_command(command_t c, int fd2)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
+
     int status;
     int fd[2];
     if (pipe(fd) < 0)
@@ -238,56 +234,7 @@ execute_pipe_command(command_t c, int fd2)
         close(fd[0]);
         close(fd[1]);
         waitpid(pid, &status, 0);
-        if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        struct rusage usage;
-        if (getrusage(RUSAGE_SELF, &usage) < 0) {
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
 
-        double end_sec = end_real_time.tv_sec;
-        double end_nsec = end_real_time.tv_nsec;
-        double end_total = calctime(end_sec, end_nsec);
-        double end_m_sec = end_m_time.tv_sec;
-        double end_m_nsec = end_m_time.tv_nsec;
-        double end_m_total = calctime(end_m_sec, end_m_nsec);
-        double start_m_sec = start_m_time.tv_sec;
-        double start_m_nsec = start_m_time.tv_nsec;
-        double start_m_total = calctime(start_m_sec, start_m_nsec);
-        double duration = end_m_total - start_m_total;
-        
-        double user_cpu_sec = usage.ru_utime.tv_sec;
-        double user_cpu_usec = usage.ru_utime.tv_usec;
-        double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-        double sys_cpu_sec = usage.ru_stime.tv_sec;
-        double sys_cpu_usec = usage.ru_stime.tv_usec;
-        double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-        
-        
-        
-        char str[1023];
-        sprintf(str, "%.2f ", end_total);
-        write(fd2, str, strlen(str));
-        sprintf(str, "%.3f ", duration);
-        write(fd2, str, strlen(str));
-        sprintf(str, "%.3f ", user_cpu);
-        write(fd2, str, strlen(str));
-        sprintf(str, "%.3f ", sys_cpu);
-        write(fd2, str, strlen(str));
-        printcmd(fd2,c);
-        write(fd2, "[", 1);
-        int pid=getpid();
-        sprintf(str, "%d", pid);
-        write(fd2, str, strlen(str));
-        write(fd2, "]", 1);
-        write(fd2, "\n", 1);
     }
 }
 
@@ -296,11 +243,7 @@ execute_pipe_command(command_t c, int fd2)
 void
 execute_sequence_command(command_t c,int fd)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
+
     switch (c->u.command[0]->type)
     {
         case IF_COMMAND: execute_if_command(c->u.command[0],fd); break;
@@ -321,65 +264,14 @@ execute_sequence_command(command_t c,int fd)
         case WHILE_COMMAND: execute_while_command(c->u.command[1],fd); break;
         case UNTIL_COMMAND: execute_until_command(c->u.command[1],fd); break;
     }
-    if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) < 0) {
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
 
-    double end_sec = end_real_time.tv_sec;
-    double end_nsec = end_real_time.tv_nsec;
-    double end_total = calctime(end_sec, end_nsec);
-    double end_m_sec = end_m_time.tv_sec;
-    double end_m_nsec = end_m_time.tv_nsec;
-    double end_m_total = calctime(end_m_sec, end_m_nsec);
-    double start_m_sec = start_m_time.tv_sec;
-    double start_m_nsec = start_m_time.tv_nsec;
-    double start_m_total = calctime(start_m_sec, start_m_nsec);
-    double duration = end_m_total - start_m_total;
-    
-    double user_cpu_sec = usage.ru_utime.tv_sec;
-    double user_cpu_usec = usage.ru_utime.tv_usec;
-    double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-    double sys_cpu_sec = usage.ru_stime.tv_sec;
-    double sys_cpu_usec = usage.ru_stime.tv_usec;
-    double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-    
-    
-    char str[1023];
-    sprintf(str, "%.2f ", end_total);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", duration);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", user_cpu);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", sys_cpu);
-    write(fd, str, strlen(str));
-    printcmd(fd,c);
-    write(fd, "[", 1);
-    int pid=getpid();
-    sprintf(str, "%d", pid);
-    write(fd, str, strlen(str));
-    write(fd, "]", 1);
-    write(fd, "\n", 1);
+
+ 
 }
 
 void
 execute_simple_command(command_t c,int fd)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
     pid_t p = fork();
     int status;
     if (p == 0) {
@@ -401,81 +293,12 @@ execute_simple_command(command_t c,int fd)
     else{
         waitpid(p, &status, 0);
         c->status = WEXITSTATUS(status);
-        if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        struct rusage usage;
-        struct rusage c_usage;
-        if (getrusage(RUSAGE_SELF, &usage) < 0) {
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        if (getrusage(RUSAGE_CHILDREN, &c_usage) < 0) {
-            fprintf(stderr, "Get Clock Time Error!\n");
-            exit(1);
-        }
-        double end_sec = end_real_time.tv_sec;
-        double end_nsec = end_real_time.tv_nsec;
-        double end_total = calctime(end_sec, end_nsec);
-        double end_m_sec = end_m_time.tv_sec;
-        double end_m_nsec = end_m_time.tv_nsec;
-        double end_m_total = calctime(end_m_sec, end_m_nsec);
-        double start_m_sec = start_m_time.tv_sec;
-        double start_m_nsec = start_m_time.tv_nsec;
-        double start_m_total = calctime(start_m_sec, start_m_nsec);
-        double duration = end_m_total - start_m_total;
-        
-        double user_cpu_sec = usage.ru_utime.tv_sec;
-        double user_cpu_usec = usage.ru_utime.tv_usec;
-        double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-        double sys_cpu_sec = usage.ru_stime.tv_sec;
-        double sys_cpu_usec = usage.ru_stime.tv_usec;
-        double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-        
-         
-        double user_cpu_secc = c_usage.ru_utime.tv_sec;
-        double user_cpu_usecc = c_usage.ru_utime.tv_usec;
-
-        double user_cpuc = calctime2(user_cpu_secc, user_cpu_usecc);
-        double sys_cpu_secc = c_usage.ru_stime.tv_sec;
-        double sys_cpu_usecc = c_usage.ru_stime.tv_usec;
-        double sys_cpuc = calctime2(sys_cpu_secc, sys_cpu_usecc);
-        
-        user_cpu += user_cpuc;
-        sys_cpu +=sys_cpuc;
-        
-        char str[1023];
-        sprintf(str, "%.2f ", end_total);
-        write(fd, str, strlen(str));
-        sprintf(str, "%.3f ", duration);
-        write(fd, str, strlen(str));
-        sprintf(str, "%.3f ", user_cpu);
-        write(fd, str, strlen(str));
-        sprintf(str, "%.3f ", sys_cpu);
-        write(fd, str, strlen(str));
-        printcmd(fd,c);
-        write(fd, "[", 1);
-        int pid=getpid();
-        sprintf(str, "%d", pid);
-        write(fd, str, strlen(str));
-        write(fd, "]", 1);
-        write(fd, "\n", 1);
     }
 }
 
 void
 execute_subshell_command(command_t c, int fd)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
     if(c->input){
         c->u.command[0]->input=c->input;
     }
@@ -492,65 +315,11 @@ execute_subshell_command(command_t c, int fd)
         case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
         case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
     }
-    if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) < 0) {
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-
-    double end_sec = end_real_time.tv_sec;
-    double end_nsec = end_real_time.tv_nsec;
-    double end_total = calctime(end_sec, end_nsec);
-    double end_m_sec = end_m_time.tv_sec;
-    double end_m_nsec = end_m_time.tv_nsec;
-    double end_m_total = calctime(end_m_sec, end_m_nsec);
-    double start_m_sec = start_m_time.tv_sec;
-    double start_m_nsec = start_m_time.tv_nsec;
-    double start_m_total = calctime(start_m_sec, start_m_nsec);
-    double duration = end_m_total - start_m_total;
-    
-    double user_cpu_sec = usage.ru_utime.tv_sec;
-    double user_cpu_usec = usage.ru_utime.tv_usec;
-    double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-    double sys_cpu_sec = usage.ru_stime.tv_sec;
-    double sys_cpu_usec = usage.ru_stime.tv_usec;
-    double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-    
-    
-    char str[1023];
-    sprintf(str, "%.2f ", end_total);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", duration);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", user_cpu);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", sys_cpu);
-    write(fd, str, strlen(str));
-    printcmd(fd,c);
-    write(fd, "[", 1);
-    int pid=getpid();
-    sprintf(str, "%d", pid);
-    write(fd, str, strlen(str));
-    write(fd, "]", 1);
-    write(fd, "\n", 1);
 }
 
 void
 execute_until_command(command_t c, int fd)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
     switch (c->u.command[0]->type)
     {
         case IF_COMMAND:  execute_if_command(c->u.command[0],fd); break;
@@ -584,66 +353,11 @@ execute_until_command(command_t c, int fd)
             case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
         }
     }
-    if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) < 0) {
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    
-    double end_sec = end_real_time.tv_sec;
-    double end_nsec = end_real_time.tv_nsec;
-    double end_total = calctime(end_sec, end_nsec);
-    double end_m_sec = end_m_time.tv_sec;
-    double end_m_nsec = end_m_time.tv_nsec;
-    double end_m_total = calctime(end_m_sec, end_m_nsec);
-    double start_m_sec = start_m_time.tv_sec;
-    double start_m_nsec = start_m_time.tv_nsec;
-    double start_m_total = calctime(start_m_sec, start_m_nsec);
-    double duration = end_m_total - start_m_total;
-    
-    double user_cpu_sec = usage.ru_utime.tv_sec;
-    double user_cpu_usec = usage.ru_utime.tv_usec;
-    double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-    double sys_cpu_sec = usage.ru_stime.tv_sec;
-    double sys_cpu_usec = usage.ru_stime.tv_usec;
-    double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-
-    
-    
-    char str[1023];
-    sprintf(str, "%.2f ", end_total);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", duration);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", user_cpu);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", sys_cpu);
-    write(fd, str, strlen(str));
-    printcmd(fd,c);
-    write(fd, "[", 1);
-    int pid=getpid();
-    sprintf(str, "%d", pid);
-    write(fd, str, strlen(str));
-    write(fd, "]", 1);
-    write(fd, "\n", 1);
 }
 
 void
 execute_while_command(command_t c, int fd)
 {
-    struct timespec end_real_time, start_m_time, end_m_time;
-    if(clock_gettime(CLOCK_MONOTONIC, &start_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
 
     switch (c->u.command[0]->type)
     {
@@ -678,55 +392,7 @@ execute_while_command(command_t c, int fd)
             case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
         }
     }
-    if(clock_gettime(CLOCK_REALTIME, &end_real_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    if(clock_gettime(CLOCK_MONOTONIC, &end_m_time) < 0){
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) < 0) {
-        fprintf(stderr, "Get Clock Time Error!\n");
-        exit(1);
-    }
 
-    double end_sec = end_real_time.tv_sec;
-    double end_nsec = end_real_time.tv_nsec;
-    double end_total = calctime(end_sec, end_nsec);
-    double end_m_sec = end_m_time.tv_sec;
-    double end_m_nsec = end_m_time.tv_nsec;
-    double end_m_total = calctime(end_m_sec, end_m_nsec);
-    double start_m_sec = start_m_time.tv_sec;
-    double start_m_nsec = start_m_time.tv_nsec;
-    double start_m_total = calctime(start_m_sec, start_m_nsec);
-    double duration = end_m_total - start_m_total;
-    
-    double user_cpu_sec = usage.ru_utime.tv_sec;
-    double user_cpu_usec = usage.ru_utime.tv_usec;
-    double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
-    double sys_cpu_sec = usage.ru_stime.tv_sec;
-    double sys_cpu_usec = usage.ru_stime.tv_usec;
-    double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);
-    
-    
-    char str[1023];
-    sprintf(str, "%.2f ", end_total);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", duration);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", user_cpu);
-    write(fd, str, strlen(str));
-    sprintf(str, "%.3f ", sys_cpu);
-    write(fd, str, strlen(str));
-    printcmd(fd,c);
-    write(fd, "[", 1);
-    int pid=getpid();
-    sprintf(str, "%d", pid);
-    write(fd, str, strlen(str));
-    write(fd, "]", 1);
-    write(fd, "\n", 1);
 }
 
 
