@@ -1,8 +1,10 @@
 
 *.out
 
-*.sh
-
 *.err
 
 *.exp
+
+test-t-ok.sh-32011.tmp/test.sh
+
+test-t-ok.sh-32018.tmp/test.sh
