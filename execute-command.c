@@ -139,56 +139,49 @@ command_status(command_t c)
     return c->status;
 }
 
+void temp(command_t c, int i, int fd){
+
+    struct command *cmd = c->u.command[i];
+    enum command_type c_type = cmd->type;
+    if(c_type == IF_COMMAND){
+        execute_if_command(cmd,fd);
+    }else if(c_type == PIPE_COMMAND){
+        execute_pipe_command(cmd,fd);
+    }else if(c_type == SEQUENCE_COMMAND){
+        execute_sequence_command(cmd,fd);
+    }else if(c_type == SIMPLE_COMMAND){
+        execute_simple_command(cmd,fd);
+    }else if(c_type == SUBSHELL_COMMAND){
+        execute_subshell_command(cmd,fd);
+    }else if(c_type == WHILE_COMMAND){
+        execute_while_command(cmd,fd);
+    }else if(c_type == UNTIL_COMMAND){
+        execute_until_command(cmd,fd);
+    }
+}
+
 void
 execute_if_command(command_t c,int fd){
 
-    switch (c->u.command[0]->type)
-    {
-        case IF_COMMAND: execute_if_command(c->u.command[0],fd); break;
-        case PIPE_COMMAND: execute_pipe_command(c->u.command[0],fd); break;
-        case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[0],fd); break;
-        case SIMPLE_COMMAND: execute_simple_command(c->u.command[0],fd); break;
-        case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[0],fd); break;
-        case WHILE_COMMAND: execute_while_command(c->u.command[0],fd); break;
-        case UNTIL_COMMAND: execute_until_command(c->u.command[0],fd); break;
-    }
+
+    temp(c, 0, fd);
+    
+
     //if condition executes successfully, execute the command[1]
     if (c->u.command[0]->status == EXIT_SUCCESS)
     {
-        switch (c->u.command[1]->type)
-        {
-            case IF_COMMAND: execute_if_command(c->u.command[1],fd); break;
-            case PIPE_COMMAND: execute_pipe_command(c->u.command[1],fd); break;
-            case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[1],fd); break;
-            case SIMPLE_COMMAND: execute_simple_command(c->u.command[1],fd); break;
-            case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[1],fd); break;
-            case WHILE_COMMAND: execute_while_command(c->u.command[1],fd); break;
-            case UNTIL_COMMAND: execute_until_command(c->u.command[1],fd); break;
-        }
+        temp(c, 1, fd);
     }
     //if condition executes unsuccessfully, execute the command[2] if it exits, else return 0 (successfully executes if command)
-    else
+    else if (c->u.command[2])
     {
-        if (c->u.command[2])
-        {
-            switch (c->u.command[2]->type)
-            {
-                case IF_COMMAND: execute_if_command(c->u.command[2],fd); break;
-                case PIPE_COMMAND: execute_pipe_command(c->u.command[2],fd); break;
-                case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[2],fd); break;
-                case SIMPLE_COMMAND: execute_simple_command(c->u.command[2],fd); break;
-                case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[2],fd); break;
-                case WHILE_COMMAND: execute_while_command(c->u.command[2],fd); break;
-                case UNTIL_COMMAND: execute_until_command(c->u.command[2],fd); break;
-            }
-        }
+        temp(c, 2, fd);
     }
 }
 
 void
 execute_pipe_command(command_t c, int fd2)
 {
-
     int status;
     int fd[2];
     if (pipe(fd) < 0)
@@ -202,31 +195,13 @@ execute_pipe_command(command_t c, int fd2)
         if (pid2==0){
             close(fd[0]);
             if(dup2(fd[1], 1)<0) error(1,0,"dup2 failed!\n");
-            switch (c->u.command[0]->type)
-            {
-                    case IF_COMMAND: execute_if_command(c->u.command[0],fd2); break;
-                    case PIPE_COMMAND: execute_pipe_command(c->u.command[0],fd2); break;
-                    case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[0],fd2); break;
-                    case SIMPLE_COMMAND: execute_simple_command(c->u.command[0],fd2); break;
-                    case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[0],fd2); break;
-                    case WHILE_COMMAND: execute_while_command(c->u.command[0],fd2); break;
-                    case UNTIL_COMMAND: execute_until_command(c->u.command[0],fd2); break;
-            }
+            temp(c, 0, fd2);
             _exit(c->u.command[0]->status);
         }else{
             waitpid(pid2, &status, 0);
             close(fd[1]);
             if(dup2(fd[0], 0)<0) error(1,0,"dup2 failed!\n");
-            switch (c->u.command[1]->type)
-            {
-                case IF_COMMAND: execute_if_command(c->u.command[1],fd2); break;
-                case PIPE_COMMAND: execute_pipe_command(c->u.command[1],fd2); break;
-                case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[1],fd2); break;
-                case SIMPLE_COMMAND: execute_simple_command(c->u.command[1],fd2); break;
-                case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[1],fd2); break;
-                case WHILE_COMMAND: execute_while_command(c->u.command[1],fd2); break;
-                case UNTIL_COMMAND: execute_until_command(c->u.command[1],fd2); break;
-            }
+            temp(c, 1, fd2);
             _exit(c->u.command[1]->status);
         }
     }
@@ -243,29 +218,8 @@ execute_pipe_command(command_t c, int fd2)
 void
 execute_sequence_command(command_t c,int fd)
 {
-
-    switch (c->u.command[0]->type)
-    {
-        case IF_COMMAND: execute_if_command(c->u.command[0],fd); break;
-        case PIPE_COMMAND: execute_pipe_command(c->u.command[0],fd); break;
-        case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[0],fd); break;
-        case SIMPLE_COMMAND: execute_simple_command(c->u.command[0],fd); break;
-        case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[0],fd); break;
-        case WHILE_COMMAND: execute_while_command(c->u.command[0],fd); break;
-        case UNTIL_COMMAND: execute_until_command(c->u.command[0],fd); break;
-    }
-    switch (c->u.command[1]->type)
-    {
-        case IF_COMMAND: execute_if_command(c->u.command[1],fd); break;
-        case PIPE_COMMAND: execute_pipe_command(c->u.command[1],fd); break;
-        case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[1],fd); break;
-        case SIMPLE_COMMAND: execute_simple_command(c->u.command[1],fd); break;
-        case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[1],fd); break;
-        case WHILE_COMMAND: execute_while_command(c->u.command[1],fd); break;
-        case UNTIL_COMMAND: execute_until_command(c->u.command[1],fd); break;
-    }
-
-
+    temp(c, 0, fd);
+    temp(c, 1, fd);
  
 }
 
@@ -305,53 +259,17 @@ execute_subshell_command(command_t c, int fd)
     if(c->output){
         c->u.command[0]->output=c->output;
     }
-    switch (c->u.command[0]->type)
-    {
-        case IF_COMMAND:  execute_if_command(c->u.command[0],fd); break;
-        case PIPE_COMMAND:  execute_pipe_command(c->u.command[0],fd); break;
-        case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[0],fd); break;
-        case SIMPLE_COMMAND:  execute_simple_command(c->u.command[0],fd); break;
-        case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[0],fd); break;
-        case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
-        case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
-    }
+    temp(c, 0, fd);
 }
 
 void
 execute_until_command(command_t c, int fd)
 {
-    switch (c->u.command[0]->type)
-    {
-        case IF_COMMAND:  execute_if_command(c->u.command[0],fd); break;
-        case PIPE_COMMAND:  execute_pipe_command(c->u.command[0],fd); break;
-        case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[0],fd); break;
-        case SIMPLE_COMMAND:  execute_simple_command(c->u.command[0],fd); break;
-        case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[0],fd); break;
-        case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
-        case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
-    }
+    temp(c, 0, fd);
     while (c->u.command[0]->status != EXIT_SUCCESS)
     {
-        switch (c->u.command[1]->type)
-        {
-            case IF_COMMAND:  execute_if_command(c->u.command[1],fd); break;
-            case PIPE_COMMAND:  execute_pipe_command(c->u.command[1],fd); break;
-            case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[1],fd); break;
-            case SIMPLE_COMMAND:  execute_simple_command(c->u.command[1],fd); break;
-            case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[1],fd); break;
-            case WHILE_COMMAND:  execute_while_command(c->u.command[1],fd); break;
-            case UNTIL_COMMAND:  execute_until_command(c->u.command[1],fd); break;
-        }
-        switch (c->u.command[0]->type)
-        {
-            case IF_COMMAND:  execute_if_command(c->u.command[0],fd); break;
-            case PIPE_COMMAND:  execute_pipe_command(c->u.command[0],fd); break;
-            case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[0],fd); break;
-            case SIMPLE_COMMAND:  execute_simple_command(c->u.command[0],fd); break;
-            case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[0],fd); break;
-            case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
-            case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
-        }
+        temp(c, 1, fd);
+        temp(c, 0, fd);
     }
 }
 
@@ -359,70 +277,36 @@ void
 execute_while_command(command_t c, int fd)
 {
 
-    switch (c->u.command[0]->type)
-    {
-        case IF_COMMAND:  execute_if_command(c->u.command[0],fd); break;
-        case PIPE_COMMAND:  execute_pipe_command(c->u.command[0],fd); break;
-        case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[0],fd); break;
-        case SIMPLE_COMMAND:  execute_simple_command(c->u.command[0],fd); break;
-        case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[0],fd); break;
-        case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
-        case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
-    }
+    temp(c, 0, fd);
     while (c->u.command[0]->status == EXIT_SUCCESS)
     {
-        switch (c->u.command[1]->type)
-        {
-            case IF_COMMAND: execute_if_command(c->u.command[1],fd); break;
-            case PIPE_COMMAND: execute_pipe_command(c->u.command[1],fd); break;
-            case SEQUENCE_COMMAND: execute_sequence_command(c->u.command[1],fd); break;
-            case SIMPLE_COMMAND: execute_simple_command(c->u.command[1],fd); break;
-            case SUBSHELL_COMMAND: execute_subshell_command(c->u.command[1],fd); break;
-            case UNTIL_COMMAND: execute_until_command(c->u.command[1],fd); break;
-            case WHILE_COMMAND: execute_while_command(c->u.command[1],fd); break;
-        }
-        switch (c->u.command[0]->type)
-        {
-            case IF_COMMAND: execute_if_command(c->u.command[0],fd); break;
-            case PIPE_COMMAND: execute_pipe_command(c->u.command[0],fd); break;
-            case SEQUENCE_COMMAND:  execute_sequence_command(c->u.command[0],fd); break;
-            case SIMPLE_COMMAND:  execute_simple_command(c->u.command[0],fd); break;
-            case SUBSHELL_COMMAND:  execute_subshell_command(c->u.command[0],fd); break;
-            case UNTIL_COMMAND:  execute_until_command(c->u.command[0],fd); break;
-            case WHILE_COMMAND:  execute_while_command(c->u.command[0],fd); break;
-        }
+        temp(c, 1, fd);
+        temp(c, 0, fd);
     }
 
 }
 
 
-void
-execute_command(command_t c, int profiling)
+void execute_command(command_t c, int profiling)
 {
-    switch (c->type) {
-        case IF_COMMAND:
-            execute_if_command(c, profiling);
-            break;
-        case PIPE_COMMAND:
-            execute_pipe_command(c, profiling);
-            break;
-        case SEQUENCE_COMMAND:
-            execute_sequence_command(c, profiling);
-            break;
-        case SIMPLE_COMMAND:
-            execute_simple_command(c, profiling);
-            break;
-        case SUBSHELL_COMMAND:
-            execute_subshell_command(c, profiling);
-            break;
-        case WHILE_COMMAND:
-            execute_while_command(c, profiling);
-            break;
-        case UNTIL_COMMAND:
-            execute_until_command(c, profiling);
-            break;
-        default:
-            error(1,0,"Undefined Command Type!\n");
-            break;
+
+    enum command_type c_type = c->type;   
+
+    if (c_type == IF_COMMAND){
+        execute_if_command(c, profiling);
+    }else if (c_type == PIPE_COMMAND){
+        execute_pipe_command(c, profiling);
+    }else if (c_type == SEQUENCE_COMMAND){
+        execute_sequence_command(c, profiling);
+    }else if (c_type == SIMPLE_COMMAND){
+        execute_simple_command(c, profiling);
+    }else if (c_type == SUBSHELL_COMMAND){
+        execute_subshell_command(c, profiling);
+    }else if (c_type == WHILE_COMMAND){
+        execute_while_command(c, profiling);
+    }else if (c_type == UNTIL_COMMAND){
+        execute_until_command(c, profiling);
+    }else{
+        error(1,0,"Command not found!\n");
     }
 }
