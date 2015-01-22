@@ -26,27 +26,35 @@ cd "$tmp" || exit
 cat >test.sh <<'EOF'
 #simple
 exec echo start testing
+
 #sub shell
 ( echo subshell_succeeded )
+
 #sequence
 touch cc ; echo sequence succeed > cc
+
 #if
 if cat cc
 then echo if_succeeded
 else echo if_failed
 fi
+
 echo while_succeeded > ee
+
 #while
 while cat ee
 do rm ee
 done
+
 #pipe
 echo pipe_succeeded | sort
+
 #until
 until
 cat dd
 do echo until_succeeded > dd
 done
+
 EOF
 
 cat >test.exp <<'EOF'
@@ -72,3 +80,4 @@ cat test.out
 ) || exit
 
 rm -fr "$tmp"
+
