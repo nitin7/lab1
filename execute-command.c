@@ -38,78 +38,8 @@ void executeSubshell(command_t cmd, char* input, char* output, int profilingSwit
 void executeUntil(command_t cmd, int);
 void executeWhile(command_t cmd, int);
 
-void
-printcmd(int profilingSwitch, command_t cmd) {
-    switch (cmd->type) {
-        case IF_COMMAND:
-            write(profilingSwitch, "if ", 3);
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, "then ", 5);
-            printcmd(profilingSwitch, cmd->u.command[1]);
-            if (cmd->u.command[2]) {
-                write(profilingSwitch, "else ", 5);
-                printcmd(profilingSwitch, cmd->u.command[2]);
-                write(profilingSwitch, "fi ", 3);
-            }
-            break;
-        case PIPE_COMMAND:
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, "| ", 2);
-            printcmd(profilingSwitch, cmd->u.command[1]);
-            break;
-        case SEQUENCE_COMMAND:
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, "; ", 2);
-            printcmd(profilingSwitch, cmd->u.command[1]);
-            break;
-        case SIMPLE_COMMAND:{
-            char **w = cmd->u.word;
-            write(profilingSwitch, *w, strlen(*w));
-            write(profilingSwitch, " ", 1);
-            while (*(++w)) {
-                write(profilingSwitch, *w, strlen(*w));
-                write(profilingSwitch, " ", 1);
-            }
-            break;
-        }
-        case SUBSHELL_COMMAND:
-            write(profilingSwitch, "( ", 2);
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, ") ", 2);
-            break;
-        case UNTIL_COMMAND:
-            write(profilingSwitch, "until ", 6);
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, "do ", 3);
-            printcmd(profilingSwitch, cmd->u.command[1]);
-            write(profilingSwitch, "done ", 5);
-            break;
-        case WHILE_COMMAND:
-            write(profilingSwitch, "while ", 6);
-            printcmd(profilingSwitch, cmd->u.command[0]);
-            write(profilingSwitch, "do ", 3);
-            printcmd(profilingSwitch, cmd->u.command[1]);
-            write(profilingSwitch, "done ", 5);
-            break;
-        default:
-            break;
-    }
-    if (cmd->input) {
-        write(profilingSwitch, "<", 1);
-        write(profilingSwitch, cmd->input, strlen(cmd->input));
-        write(profilingSwitch, " ", 1);
-    }
-    if (cmd->output) {
-        write(profilingSwitch, ">", 1);
-        write(profilingSwitch, cmd->output, strlen(cmd->output));
-        write(profilingSwitch, " ", 1);
-    }
-}
 
-
-int
-prepare_profiling(char const *name)
-{
+int prepare_profiling(char const *name){
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
@@ -117,9 +47,7 @@ prepare_profiling(char const *name)
   return -1;
 }
 
-int
-command_status(command_t c)
-{
+int command_status(command_t c){
     int status = c->status;
     return status;
 }
@@ -150,10 +78,7 @@ void selectCommand(command_t c, int i, int profilingSwitch) {
     return;
 }
 
-void
-executeIf(command_t c, int profilingSwitch)
-{
-
+void executeIf(command_t c, int profilingSwitch){
     selectCommand(c, 0, profilingSwitch);
     if (c->u.command[0]->status == EXIT_SUCCESS)
         selectCommand(c, 1, profilingSwitch);
@@ -162,54 +87,52 @@ executeIf(command_t c, int profilingSwitch)
     return;
 }
 
-void
-executePipe(command_t c, int profiling)
-{
+void executePipe(command_t c, int profiling){
     int status;
-    int fd[2];
-    if (pipe(fd) < 0)
-        error(1, 0, "Pipe failed!\n");
-    pid_t pid = fork();
-    if (pid < 0)
-        error(1, 0, "Fork failed!\n");
-    if (pid == 0) {
+    int file_d[2];
+    pid_t pid1 = fork();
+    int t0 = file_d[0];
+    int t1 = file_d[1];
+    if (pipe(file_d) < 0){
+        error(1, 0, "executePipe(): Failed pipe.\n");
+    }else if (pid1 < 0){
+        error(1, 0, "executePipe(): Failed fork.\n");
+    }else if (pid1 == 0){
         pid_t pid2 = fork();
-        if (pid2 < 0) error(1, 0, "Fork failed!\n");
-        if (pid2==0) {
-            close(fd[0]);
-            if (dup2(fd[1], 1)<0) error(1,0,"dup2 failed!\n");
+        if (pid2 < 0){ 
+            error(1, 0, "executePipe(): Failed fork.\n");
+        } else if (pid2 == 0) {
+            close(t0);
+            if (dup2(t1, 1) < 0) 
+                error(1,0,"executePipe(): Failed dup2.\n");
             selectCommand(c, 0, profiling);
             _exit(c->u.command[0]->status);
         } else {
             waitpid(pid2, &status, 0);
-            close(fd[1]);
-            if (dup2(fd[0], 0)<0) error(1,0,"dup2 failed!\n");
+            close(t1);
+            if (dup2(t0, 0) < 0) 
+                error(1,0,"executePipe(): Failed dup2.\n");
             selectCommand(c, 1, profiling);
             _exit(c->u.command[1]->status);
         }
+    }else{
+        close(t0);
+        close(t1);
+        waitpid(pid1, &status, 0);
     }
-    else {
-        close(fd[0]);
-        close(fd[1]);
-        waitpid(pid, &status, 0);
 
-    }
     return;
 }
 
 
 
-void
-executeSequence(command_t c, int profilingSwitch)
-{
+void executeSequence(command_t c, int profilingSwitch){
     selectCommand(c, 0, profilingSwitch);
     selectCommand(c, 1, profilingSwitch);
     return;
 }
 
-void
-executeSimple(command_t c, char* input, char* output, int profilingSwitch)
-{
+void executeSimple(command_t c, char* input, char* output, int profilingSwitch){
     pid_t pid = fork();
     int status;
 
@@ -253,9 +176,7 @@ executeSimple(command_t c, char* input, char* output, int profilingSwitch)
     return;
 }
 
-void
-executeSubshell(command_t c, char* input, char* output, int profilingSwitch)
-{
+void executeSubshell(command_t c, char* input, char* output, int profilingSwitch){
 
     if (input != NULL) {
         c->u.command[0]->input = input;
@@ -268,9 +189,7 @@ executeSubshell(command_t c, char* input, char* output, int profilingSwitch)
     return;
 }
 
-void
-executeUntil(command_t c, int profilingSwitch)
-{
+void executeUntil(command_t c, int profilingSwitch){
     selectCommand(c, 0, profilingSwitch);
     while (c->u.command[0]->status != EXIT_SUCCESS)
     {
@@ -280,9 +199,7 @@ executeUntil(command_t c, int profilingSwitch)
     return;
 }
 
-void
-executeWhile(command_t c, int profilingSwitch)
-{
+void executeWhile(command_t c, int profilingSwitch){
 
     selectCommand(c, 0, profilingSwitch);
     while (c->u.command[0]->status == EXIT_SUCCESS)
@@ -294,8 +211,7 @@ executeWhile(command_t c, int profilingSwitch)
 }
 
 
-void execute_command(command_t c, int profilingSwitch)
-{
+void execute_command(command_t c, int profilingSwitch){
     enum command_type c_type = c->type;
     char* input = c->input;
     char* output = c->output;
