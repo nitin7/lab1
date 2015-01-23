@@ -30,161 +30,140 @@
 #include <fcntl.h>
 
 
-void execute_if_command(command_t,int);
-void execute_pipe_command(command_t,int);
-void execute_sequence_command(command_t,int);
-void execute_simple_command(command_t,int);
-void execute_subshell_command(command_t,int);
-void execute_until_command(command_t,int);
-void execute_while_command(command_t,int);
+void executeIf(command_t,int);
+void executePipe(command_t,int);
+void executeSequence(command_t,int);
+void executeSimpleCmd(command_t,int);
+void executeSubshellCmd(command_t,int);
+void executeUntil(command_t,int);
+void executeWhile(command_t,int);
 
 void
-printcmd (int fd, command_t cmd){
+printcmd (int profiling, command_t cmd){
     switch (cmd->type) {
         case IF_COMMAND:
-            write(fd, "if ", 3);
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, "then ", 5);
-            printcmd(fd, cmd->u.command[1]);
+            write(profiling, "if ", 3);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, "then ", 5);
+            printcmd(profiling, cmd->u.command[1]);
             if (cmd->u.command[2]){
-                write(fd, "else ", 5);
-                printcmd(fd, cmd->u.command[2]);
-                write(fd, "fi ", 3);
+                write(profiling, "else ", 5);
+                printcmd(profiling, cmd->u.command[2]);
+                write(profiling, "fi ", 3);
             }
             break;
         case PIPE_COMMAND:
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, "| ", 2);
-            printcmd(fd, cmd->u.command[1]);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, "| ", 2);
+            printcmd(profiling, cmd->u.command[1]);
             break;
         case SEQUENCE_COMMAND:
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, "; ", 2);
-            printcmd(fd, cmd->u.command[1]);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, "; ", 2);
+            printcmd(profiling, cmd->u.command[1]);
             break;
         case SIMPLE_COMMAND:{
             char **w = cmd->u.word;
-            write(fd, *w, strlen(*w));
-            write(fd, " ", 1);
+            write(profiling, *w, strlen(*w));
+            write(profiling, " ", 1);
             while (*(++w)){
-                write(fd, *w, strlen(*w));
-                write(fd, " ", 1);
+                write(profiling, *w, strlen(*w));
+                write(profiling, " ", 1);
             }
             break;
         }
         case SUBSHELL_COMMAND:
-            write(fd, "( ", 2);
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, ") ", 2);
+            write(profiling, "( ", 2);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, ") ", 2);
             break;
         case UNTIL_COMMAND:
-            write(fd, "until ", 6);
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, "do ", 3);
-            printcmd(fd, cmd->u.command[1]);
-            write(fd, "done ", 5);
+            write(profiling, "until ", 6);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, "do ", 3);
+            printcmd(profiling, cmd->u.command[1]);
+            write(profiling, "done ", 5);
             break;
         case WHILE_COMMAND:
-            write(fd, "while ", 6);
-            printcmd(fd, cmd->u.command[0]);
-            write(fd, "do ", 3);
-            printcmd(fd, cmd->u.command[1]);
-            write(fd, "done ", 5);
+            write(profiling, "while ", 6);
+            printcmd(profiling, cmd->u.command[0]);
+            write(profiling, "do ", 3);
+            printcmd(profiling, cmd->u.command[1]);
+            write(profiling, "done ", 5);
             break;
         default:
             break;
     }
     if (cmd->input){
-        write(fd, "<", 1);
-        write(fd, cmd->input, strlen(cmd->input));
-        write(fd, " ", 1);
+        write(profiling, "<", 1);
+        write(profiling, cmd->input, strlen(cmd->input));
+        write(profiling, " ", 1);
     }
     if (cmd->output){
-        write(fd, ">", 1);
-        write(fd, cmd->output, strlen(cmd->output));
-        write(fd, " ", 1);
+        write(profiling, ">", 1);
+        write(profiling, cmd->output, strlen(cmd->output));
+        write(profiling, " ", 1);
     }
 }
 
-double
-calctime(double tv_sec, double tv_nsec){
-    tv_nsec/=1000000000;
-    return tv_sec+tv_nsec;
-}
 
-double
-calctime2(double tv_sec, double tv_usec){
-    tv_usec/=1000000;
-    return tv_sec+tv_usec;
-}
 int
-prepare_profiling(char const *name)
+prepare_profiling (char const *name)
 {
-    /* FIXME: Replace this with your implementation.  You may need to
+  /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
-    //error (0, 0, "warning: profiling not yet implemented");
-    int fd;
-    fd = open(name, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-    if(fd < 0) {
-        fprintf(stderr, "Cannot write to file: %s", name);
-        exit(1);
-    }
-    return fd;
+  error (0, 0, "warning: profiling not yet implemented");
+  return -1;
 }
 
 int
 command_status(command_t c)
 {
-    return c->status;
+    int status = c->status;
+    return status;
 }
 
-void temp(command_t c, int i, int fd){
+void selectCommand(command_t c, int i, int profiling){
 
     struct command *cmd = c->u.command[i];
     enum command_type c_type = cmd->type;
     if(c_type == IF_COMMAND){
-        execute_if_command(cmd,fd);
+        executeIf(cmd,profiling);
     }else if(c_type == PIPE_COMMAND){
-        execute_pipe_command(cmd,fd);
+        executePipe(cmd,profiling);
     }else if(c_type == SEQUENCE_COMMAND){
-        execute_sequence_command(cmd,fd);
+        executeSequence(cmd,profiling);
     }else if(c_type == SIMPLE_COMMAND){
-        execute_simple_command(cmd,fd);
+        executeSimpleCmd(cmd,profiling);
     }else if(c_type == SUBSHELL_COMMAND){
-        execute_subshell_command(cmd,fd);
+        executeSubshellCmd(cmd,profiling);
     }else if(c_type == WHILE_COMMAND){
-        execute_while_command(cmd,fd);
+        executeWhile(cmd,profiling);
     }else if(c_type == UNTIL_COMMAND){
-        execute_until_command(cmd,fd);
+        executeUntil(cmd,profiling);
+    }else{
+        error(1,0,"Command not found!\n");
     }
 }
 
 void
-execute_if_command(command_t c,int fd){
+executeIf(command_t c, int profiling)
+{
 
-
-    temp(c, 0, fd);
-    
-
-    //if condition executes successfully, execute the command[1]
+    selectCommand(c, 0, profiling);
     if (c->u.command[0]->status == EXIT_SUCCESS)
-    {
-        temp(c, 1, fd);
-    }
-    //if condition executes unsuccessfully, execute the command[2] if it exits, else return 0 (successfully executes if command)
+        selectCommand(c, 1, profiling);
     else if (c->u.command[2])
-    {
-        temp(c, 2, fd);
-    }
+        selectCommand(c, 2, profiling);
 }
 
 void
-execute_pipe_command(command_t c, int fd2)
+executePipe(command_t c, int profiling2)
 {
     int status;
-    int fd[2];
-    if (pipe(fd) < 0)
+    int profiling[2];
+    if (pipe(profiling) < 0)
         error(1, 0, "Pipe failed!\n");
     pid_t pid = fork();
     if (pid < 0)
@@ -193,21 +172,21 @@ execute_pipe_command(command_t c, int fd2)
         pid_t pid2 = fork();
         if (pid2 < 0) error(1, 0, "Fork failed!\n");
         if (pid2==0){
-            close(fd[0]);
-            if(dup2(fd[1], 1)<0) error(1,0,"dup2 failed!\n");
-            temp(c, 0, fd2);
+            close(profiling[0]);
+            if(dup2(profiling[1], 1)<0) error(1,0,"dup2 failed!\n");
+            selectCommand(c, 0, profiling2);
             _exit(c->u.command[0]->status);
         }else{
             waitpid(pid2, &status, 0);
-            close(fd[1]);
-            if(dup2(fd[0], 0)<0) error(1,0,"dup2 failed!\n");
-            temp(c, 1, fd2);
+            close(profiling[1]);
+            if(dup2(profiling[0], 0)<0) error(1,0,"dup2 failed!\n");
+            selectCommand(c, 1, profiling2);
             _exit(c->u.command[1]->status);
         }
     }
     else{
-        close(fd[0]);
-        close(fd[1]);
+        close(profiling[0]);
+        close(profiling[1]);
         waitpid(pid, &status, 0);
 
     }
@@ -216,42 +195,62 @@ execute_pipe_command(command_t c, int fd2)
 
 
 void
-execute_sequence_command(command_t c,int fd)
+executeSequence(command_t c, int profiling)
 {
-    temp(c, 0, fd);
-    temp(c, 1, fd);
- 
+    selectCommand(c, 0, profiling);
+    selectCommand(c, 1, profiling);
 }
-
+//changes done 
 void
-execute_simple_command(command_t c,int fd)
+executeSimpleCmd(command_t c, int profiling)
 {
-    pid_t p = fork();
+    pid_t pid = fork();
     int status;
-    if (p == 0) {
-        if (c->input) {
-            int infile;
-            if ((infile = open(c->input, O_RDONLY, 0666)) == -1) error(1,0,"Cannnot open file!\n");
-            if (dup2(infile, 0) < 0) error(1,0,"I/O redirecting failed!\n");
-            close(infile);
-        }
-        if (c->output) {
-            int outfile;
-            if ((outfile = open(c->output, O_WRONLY|O_CREAT|O_TRUNC,0666)) == -1) error(1,0,"Cannnot open file!\n");
-            if (dup2(outfile, 1) < 0) error(1,0,"I/O redirecting failed!\n");
-            close(outfile);
-        }
-        if (strcmp(c->u.word[0], "exec")!= 0) execvp(c->u.word[0], c->u.word);
-        else execvp(c->u.word[1], c->u.word + 1);
-    }
-    else{
-        waitpid(p, &status, 0);
+
+    if (pid > 0)
+    {
+        waitpid(pid, &status, 0);
         c->status = WEXITSTATUS(status);
     }
+    else if (pid < 0)
+    {
+        error(1, 0, "Failed to fork. \n");
+    }
+    else 
+    {
+        char* input = c->input;
+        char* output = c->output;
+
+        if (input != NULL) {
+            int input_file = open(input, O_RDONLY, 0666);
+
+            if (input_file < 0) 
+                error(1, 0, "Failed to open input file. \n");
+            if (dup2(input_file, 0) < 0) 
+                error(1, 0, "Failed dup2. \n");
+
+            close(input_file);
+        }
+        if (output != NULL) {
+            int output_file = open(output, O_WRONLY|O_CREAT|O_TRUNC, 0666);
+
+            if (output_file < 0) 
+                error(1,0,"Failed to open output file. \n");
+            if (dup2(output_file, 1) < 0) 
+                error(1, 0, "Failed dup2 \n");
+
+            close(output_file);
+        }
+
+        if (strcmp(c->u.word[0], "exec") != 0) 
+            execvp(c->u.word[0], c->u.word);
+        else 
+            execvp(c->u.word[1], c->u.word + 1);
+    }
 }
 
 void
-execute_subshell_command(command_t c, int fd)
+executeSubshellCmd(command_t c, int profiling)
 {
     if(c->input){
         c->u.command[0]->input=c->input;
@@ -259,29 +258,29 @@ execute_subshell_command(command_t c, int fd)
     if(c->output){
         c->u.command[0]->output=c->output;
     }
-    temp(c, 0, fd);
+    selectCommand(c, 0, profiling);
 }
 
 void
-execute_until_command(command_t c, int fd)
+executeUntil(command_t c, int profiling)
 {
-    temp(c, 0, fd);
+    selectCommand(c, 0, profiling);
     while (c->u.command[0]->status != EXIT_SUCCESS)
     {
-        temp(c, 1, fd);
-        temp(c, 0, fd);
+        selectCommand(c, 1, profiling);
+        selectCommand(c, 0, profiling);
     }
 }
 
 void
-execute_while_command(command_t c, int fd)
+executeWhile(command_t c, int profiling)
 {
 
-    temp(c, 0, fd);
+    selectCommand(c, 0, profiling);
     while (c->u.command[0]->status == EXIT_SUCCESS)
     {
-        temp(c, 1, fd);
-        temp(c, 0, fd);
+        selectCommand(c, 1, profiling);
+        selectCommand(c, 0, profiling);
     }
 
 }
@@ -293,19 +292,19 @@ void execute_command(command_t c, int profiling)
     enum command_type c_type = c->type;   
 
     if (c_type == IF_COMMAND){
-        execute_if_command(c, profiling);
+        executeIf(c, profiling);
     }else if (c_type == PIPE_COMMAND){
-        execute_pipe_command(c, profiling);
+        executePipe(c, profiling);
     }else if (c_type == SEQUENCE_COMMAND){
-        execute_sequence_command(c, profiling);
+        executeSequence(c, profiling);
     }else if (c_type == SIMPLE_COMMAND){
-        execute_simple_command(c, profiling);
+        executeSimpleCmd(c, profiling);
     }else if (c_type == SUBSHELL_COMMAND){
-        execute_subshell_command(c, profiling);
+        executeSubshellCmd(c, profiling);
     }else if (c_type == WHILE_COMMAND){
-        execute_while_command(c, profiling);
+        executeWhile(c, profiling);
     }else if (c_type == UNTIL_COMMAND){
-        execute_until_command(c, profiling);
+        executeUntil(c, profiling);
     }else{
         error(1,0,"Command not found!\n");
     }
