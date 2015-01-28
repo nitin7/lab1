@@ -25,6 +25,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+#include <time.h>
 
 void executeSimple(command_t cmd, char* input, char* output, int profilingSwitch);
 void executeSubshell(command_t cmd, char* input, char* output, int profilingSwitch);
@@ -35,12 +38,153 @@ void executeWhile(command_t cmd, int);
 void executeUntil(command_t cmd, int);
 
 
+void printcmd (int fd, command_t cmd){
+    switch (cmd->type) {
+        case IF_COMMAND:
+            write(fd, "if ", 3);
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, "then ", 5);
+            printcmd(fd, cmd->u.command[1]);
+            if (cmd->u.command[2]){
+                write(fd, "else ", 5);
+                printcmd(fd, cmd->u.command[2]);
+                write(fd, "fi ", 3);
+            }
+            break;
+        case PIPE_COMMAND:
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, "| ", 2);
+            printcmd(fd, cmd->u.command[1]);
+            break;
+        case SEQUENCE_COMMAND:
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, "; ", 2);
+            printcmd(fd, cmd->u.command[1]);
+            break;
+        case SIMPLE_COMMAND:{
+            char **w = cmd->u.word;
+            write(fd, *w, strlen(*w));
+            write(fd, " ", 1);
+            while (*(++w)){
+                write(fd, *w, strlen(*w));
+                write(fd, " ", 1);
+            }
+            break;
+        }
+        case SUBSHELL_COMMAND:
+            write(fd, "( ", 2);
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, ") ", 2);
+            break;
+        case UNTIL_COMMAND:
+            write(fd, "until ", 6);
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, "do ", 3);
+            printcmd(fd, cmd->u.command[1]);
+            write(fd, "done ", 5);
+            break;
+        case WHILE_COMMAND:
+            write(fd, "while ", 6);
+            printcmd(fd, cmd->u.command[0]);
+            write(fd, "do ", 3);
+            printcmd(fd, cmd->u.command[1]);
+            write(fd, "done ", 5);
+            break;
+        default:
+            break;
+    }
+    if (cmd->input){
+        write(fd, "<", 1);
+        write(fd, cmd->input, strlen(cmd->input));
+        write(fd, " ", 1);
+    }
+    if (cmd->output){
+        write(fd, ">", 1);
+        write(fd, cmd->output, strlen(cmd->output));
+        write(fd, " ", 1);
+    }
+}
+
+double calctime(double tv_sec, double tv_nsec){
+    tv_nsec/=1000000000;
+    return tv_sec+tv_nsec;
+}
+
+double calctime2(double tv_sec, double tv_usec){
+    tv_usec/=1000000;
+    return tv_sec+tv_usec;
+}
+
+void checkTime(struct timespec *time, int mono){
+    if (mono){
+        if(clock_gettime(CLOCK_MONOTONIC, time) < 0){
+            fprintf(stderr, "Get Clock Time Error!\n");
+            exit(1);
+        }
+    }else{
+        if(clock_gettime(CLOCK_REALTIME, time) < 0){
+            fprintf(stderr, "Get Clock Time Error!\n");
+            exit(1);
+        }
+    }
+}
+
+void checkUsage(struct rusage *r){
+    if (getrusage(RUSAGE_SELF, r) < 0) {
+        fprintf(stderr, "Get Clock Time Error!\n");
+        exit(1);
+    }
+}
+
+void writeProfiling(command_t c, int profilingSwitch, struct timespec start_m_time, struct timespec end_m_time, struct timespec end_real_time, struct rusage usage){
+    double end_sec = end_real_time.tv_sec;
+    double end_nsec = end_real_time.tv_nsec;
+    double end_total = calctime(end_sec, end_nsec);
+    double end_m_sec = end_m_time.tv_sec;
+    double end_m_nsec = end_m_time.tv_nsec;
+    double end_m_total = calctime(end_m_sec, end_m_nsec);
+    double start_m_sec = start_m_time.tv_sec;
+    double start_m_nsec = start_m_time.tv_nsec;
+    double start_m_total = calctime(start_m_sec, start_m_nsec);
+    double duration = end_m_total - start_m_total;
+    
+    double user_cpu_sec = usage.ru_utime.tv_sec;
+    double user_cpu_usec = usage.ru_utime.tv_usec;
+    double user_cpu = calctime2(user_cpu_sec, user_cpu_usec);
+    double sys_cpu_sec = usage.ru_stime.tv_sec;
+    double sys_cpu_usec = usage.ru_stime.tv_usec;
+    double sys_cpu = calctime2(sys_cpu_sec, sys_cpu_usec);    
+    
+    
+    char str[1023];
+    sprintf(str, "%.2f ", end_total);
+    write(profilingSwitch, str, strlen(str));
+    sprintf(str, "%.3f ", duration);
+    write(profilingSwitch, str, strlen(str));
+    sprintf(str, "%.3f ", user_cpu);
+    write(profilingSwitch, str, strlen(str));
+    sprintf(str, "%.3f ", sys_cpu);
+    write(profilingSwitch, str, strlen(str));
+    printcmd(profilingSwitch,c);
+    write(profilingSwitch, "[", 1);
+    int pid=getpid();
+    sprintf(str, "%d", pid);
+    write(profilingSwitch, str, strlen(str));
+    write(profilingSwitch, "]", 1);
+    write(profilingSwitch, "\n", 1);
+}
+
 int prepare_profiling(char const *name){
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
-  error (0, 0, "warning: profiling not yet implemented");
-  return -1;
+    int fd;
+    fd = open(name, O_WRONLY|O_CREAT|O_TRUNC, 0666);
+    if(fd < 0) {
+        fprintf(stderr, "Cannot write to file: %s", name);
+        exit(1);
+    }
+    return fd;
 }
 
 int command_status(command_t c){
@@ -117,6 +261,10 @@ void executeSimple(command_t c, char* input, char* output, int profilingSwitch){
 }
 
 void executePipe(command_t c, int profiling){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
+
     int status;
     int file_d[2];
     pid_t pid1 = fork();
@@ -150,25 +298,52 @@ void executePipe(command_t c, int profiling){
         waitpid(pid1, &status, 0);
     }
 
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profiling, times[0], times[1], times[2], usage);
+
     return;
 }
 
 void executeIf(command_t c, int profilingSwitch){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
+
     selectCommand(c, 0, profilingSwitch);
     if (c->u.command[0]->status == EXIT_SUCCESS)
         selectCommand(c, 1, profilingSwitch);
     else if (c->u.command[2])
         selectCommand(c, 2, profilingSwitch);
+
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profilingSwitch, times[0], times[1], times[2], usage);
+
     return;
 }
 
 void executeSequence(command_t c, int profilingSwitch){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
+
     selectCommand(c, 0, profilingSwitch);
     selectCommand(c, 1, profilingSwitch);
+
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profilingSwitch, times[0], times[1], times[2], usage);
     return;
 }
 
 void executeSubshell(command_t c, char* input, char* output, int profilingSwitch){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
 
     if (input != NULL) {
         c->u.command[0]->input = input;
@@ -178,11 +353,19 @@ void executeSubshell(command_t c, char* input, char* output, int profilingSwitch
     }
 
     selectCommand(c, 0, profilingSwitch);
+
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profilingSwitch, times[0], times[1], times[2], usage);
     return;
 }
 
 
 void executeWhile(command_t c, int profilingSwitch){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
 
     selectCommand(c, 0, profilingSwitch);
     while (c->u.command[0]->status == EXIT_SUCCESS)
@@ -190,10 +373,18 @@ void executeWhile(command_t c, int profilingSwitch){
         selectCommand(c, 1, profilingSwitch);
         selectCommand(c, 0, profilingSwitch);
     }
+
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profilingSwitch, times[0], times[1], times[2], usage);
     return;
 }
 
 void executeUntil(command_t c, int profilingSwitch){
+    struct timespec times[3];
+    struct rusage usage;
+    checkTime(&times[0], 1);
 
     selectCommand(c, 0, profilingSwitch);
     while (c->u.command[0]->status != EXIT_SUCCESS)
@@ -201,6 +392,11 @@ void executeUntil(command_t c, int profilingSwitch){
         selectCommand(c, 1, profilingSwitch);
         selectCommand(c, 0, profilingSwitch);
     }
+
+    checkTime(&times[1], 0);
+    checkTime(&times[2], 1);
+    checkUsage(&usage);
+    writeProfiling(c, profilingSwitch, times[0], times[1], times[2], usage);
     return;
 }
 
