@@ -34,76 +34,16 @@ void executeSubshell(command_t cmd, char* input, char* output, int profiling);
 void executePipe(command_t cmd, int profiling);
 void executeIf(command_t cmd, int profiling);
 void executeSequence(command_t cmd, int profiling);
-void executeWhile(command_t cmd, int);
-void executeUntil(command_t cmd, int);
+void executeWhile(command_t cmd, int profiling);
+void executeUntil(command_t cmd, int profiling);
+void execute_command(command_t c, int profiling);
+void selectCommand(command_t c, int i, int profiling);
+double calctime(double sec, double nORusec, double size);
+void checkTime(struct timespec *time, int mono);
+void checkUsage(struct rusage *r, int self);
+void writeProfiling(command_t c, int profiling, struct timespec* times, struct rusage r_usg, struct rusage r_usg_ch, int simple);
 
 
-void commandPrint (int fd, command_t cmd){
-    switch (cmd->type) {
-        case IF_COMMAND:
-            write(fd, "if ", 3);
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, "then ", 5);
-            commandPrint(fd, cmd->u.command[1]);
-            if (cmd->u.command[2]){
-                write(fd, "else ", 5);
-                commandPrint(fd, cmd->u.command[2]);
-                write(fd, "fi ", 3);
-            }
-            break;
-        case PIPE_COMMAND:
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, "| ", 2);
-            commandPrint(fd, cmd->u.command[1]);
-            break;
-        case SEQUENCE_COMMAND:
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, "; ", 2);
-            commandPrint(fd, cmd->u.command[1]);
-            break;
-        case SIMPLE_COMMAND:{
-            char **w = cmd->u.word;
-            write(fd, *w, strlen(*w));
-            write(fd, " ", 1);
-            while (*(++w)){
-                write(fd, *w, strlen(*w));
-                write(fd, " ", 1);
-            }
-            break;
-        }
-        case SUBSHELL_COMMAND:
-            write(fd, "( ", 2);
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, ") ", 2);
-            break;
-        case UNTIL_COMMAND:
-            write(fd, "until ", 6);
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, "do ", 3);
-            commandPrint(fd, cmd->u.command[1]);
-            write(fd, "done ", 5);
-            break;
-        case WHILE_COMMAND:
-            write(fd, "while ", 6);
-            commandPrint(fd, cmd->u.command[0]);
-            write(fd, "do ", 3);
-            commandPrint(fd, cmd->u.command[1]);
-            write(fd, "done ", 5);
-            break;
-        default:
-            break;
-    }
-    if (cmd->input){
-        write(fd, "<", 1);
-        write(fd, cmd->input, strlen(cmd->input));
-        write(fd, " ", 1);
-    }
-    if (cmd->output){
-        write(fd, ">", 1);
-        write(fd, cmd->output, strlen(cmd->output));
-        write(fd, " ", 1);
-    }
-}
 
 double calctime(double sec, double nORusec, double size){
     return sec+(nORusec/size);
@@ -159,19 +99,27 @@ void writeProfiling(command_t c, int profiling, struct timespec* times, struct r
         system_cpu_time +=system_cpu_time_ch;
     }
 
-    int num_chars = snprintf(buf, buf_size, "%.2f %.3f %.3f %.3f ", finish_time, exec_time, user_cpu_time, system_cpu_time);
+    int num_chars = snprintf(buf, buf_size, "%.2f %.9f %.9f %.9f ", finish_time, exec_time, user_cpu_time, system_cpu_time);
     write(profiling, buf, num_chars);
 
-    commandPrint(profiling,c);
-
-    int pid = getpid();
-    num_chars = snprintf(buf, buf_size, "[%d]\n", pid); 
-    write(profiling, buf, num_chars);
+    if (c != NULL) {
+      char **w = c->u.word;
+      write(profiling, *w, strlen(*w));
+      while (*(++w)){
+          write(profiling, " ", 1);
+          write(profiling, *w, strlen(*w));
+      }
+      write(profiling, "\n", 1);
+    }
+    else {
+      int pid = getpid();
+      num_chars = snprintf(buf, buf_size, "[%d]\n", pid); 
+      write(profiling, buf, num_chars);
+    }
 }
 
 
-
-int prepare_profiling(char const *name){
+int prepare_profiling(char const *name) {
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
@@ -215,8 +163,8 @@ void selectCommand(command_t c, int i, int profiling) {
     return;
 }
 
-void executeSimple(command_t c, char* input, char* output, int profiling){
-
+void executeSimple(command_t c, char* input, char* output, int profiling)
+{
     struct rusage r_usg;
     struct rusage r_usg_ch;
     struct timespec times[3];
@@ -234,7 +182,6 @@ void executeSimple(command_t c, char* input, char* output, int profiling){
         checkUsage(&r_usg, 1);
         checkUsage(&r_usg_ch, 0);
         writeProfiling(c, profiling, times, r_usg, r_usg_ch, 1);
-
     }
     else if (pid < 0)
     {
@@ -263,49 +210,51 @@ void executeSimple(command_t c, char* input, char* output, int profiling){
             close(output_file);
         } 
 
-        if (execvp(*(c->u.word), c->u.word) < 0)
-            error(1, 0, "Failed to execute command. \n");
+        if (strcmp(c->u.word[0], "exec") == 0)
+            execvp(c->u.word[1], c->u.word+1);
+        else
+            execvp(c->u.word[0], c->u.word);
     }
-
     return;
-
 }
 
-void executePipe(command_t c, int profiling){
+void executePipe(command_t c, int profiling)
+{
     struct rusage r_usg;
     struct timespec times[3];
     checkTime(&times[0], 1);
 
     int status;
     int file_d[2];
+    int *t0 = &file_d[0];
+    int *t1 = &file_d[1];
     pid_t pid1 = fork();
-    int t0 = file_d[0];
-    int t1 = file_d[1];
+
     if (pipe(file_d) < 0){
         error(1, 0, "executePipe(): Failed pipe.\n");
-    }else if (pid1 < 0){
+    } else if (pid1 < 0){
         error(1, 0, "executePipe(): Failed fork.\n");
-    }else if (pid1 == 0){
+    } else if (pid1 == 0){
         pid_t pid2 = fork();
         if (pid2 < 0){ 
             error(1, 0, "executePipe(): Failed fork.\n");
         } else if (pid2 == 0) {
-            close(t0);
-            if (dup2(t1, 1) < 0) 
+            close(*t0);
+            if (dup2(*t1, 1) < 0) 
                 error(1,0,"executePipe(): Failed dup2.\n");
             selectCommand(c, 0, profiling);
             _exit(c->u.command[0]->status);
         } else {
             waitpid(pid2, &status, 0);
-            close(t1);
-            if (dup2(t0, 0) < 0) 
+            close(*t1);
+            if (dup2(*t0, 0) < 0) 
                 error(1,0,"executePipe(): Failed dup2.\n");
             selectCommand(c, 1, profiling);
             _exit(c->u.command[1]->status);
         }
-    }else{
-        close(t0);
-        close(t1);
+    } else {
+        close(*t0);
+        close(*t1);
         waitpid(pid1, &status, 0);
     }
 
@@ -313,10 +262,11 @@ void executePipe(command_t c, int profiling){
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
 
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
 
     return;
 }
+
 
 void executeIf(command_t c, int profiling){
     struct rusage r_usg;
@@ -332,7 +282,7 @@ void executeIf(command_t c, int profiling){
     checkTime(&times[2], 0);
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
 
     return;
 }
@@ -348,7 +298,7 @@ void executeSequence(command_t c, int profiling){
     checkTime(&times[2], 0);
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
     return;
 }
 
@@ -369,10 +319,9 @@ void executeSubshell(command_t c, char* input, char* output, int profiling){
     checkTime(&times[2], 0);
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
     return;
 }
-
 
 void executeWhile(command_t c, int profiling){
     struct rusage r_usg;
@@ -389,7 +338,7 @@ void executeWhile(command_t c, int profiling){
     checkTime(&times[2], 0);
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
     return;
 }
 
@@ -408,7 +357,7 @@ void executeUntil(command_t c, int profiling){
     checkTime(&times[2], 0);
     checkTime(&times[1], 1); 
     checkUsage(&r_usg, 1);
-    writeProfiling(c, profiling, times, r_usg, r_usg, 0);
+    writeProfiling(NULL, profiling, times, r_usg, r_usg, 0);
     return;
 }
 
