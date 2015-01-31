@@ -229,32 +229,30 @@ void executePipe(command_t c, int profiling)
     int *t1 = &file_d[1];
     pid_t pid1 = fork();
 
-    if (pipe(file_d) < 0) {
-        error(1, 0, "executePipe(): Failed pipe.\n");
-    } else if (pid1 < 0) {
-        error(1, 0, "executePipe(): Failed fork.\n");
-    } else if (pid1 == 0) {
-        pid_t pid2 = fork();
-        if (pid2 < 0) { 
-            error(1, 0, "executePipe(): Failed fork.\n");
-        } else if (pid2 == 0) {
+    if (pipe(file_d) >= 0 && pid1 >= 0){
+        if (pid1 == 0){
+            pid_t pid2 = fork();
+            if (pid2 > 0 && dup2(*t0, 0) >= 0) { 
+                waitpid(pid2, &status, 0);
+                close(*t1);
+                selectCommand(c, 1, profiling);
+                _exit(c->u.command[1]->status); 
+            } else if (pid2 == 0 && dup2(*t1, 1) >= 0) {
+                close(*t0);
+                selectCommand(c, 0, profiling);
+                _exit(c->u.command[0]->status);
+            } else {
+                error(1, 0, "executePipe(): Failed fork or dup2.\n");
+                _exit(1);
+            }
+        }else{
             close(*t0);
-            if (dup2(*t1, 1) < 0) 
-                error(1,0,"executePipe(): Failed dup2.\n");
-            selectCommand(c, 0, profiling);
-            _exit(c->u.command[0]->status);
-        } else {
-            waitpid(pid2, &status, 0);
             close(*t1);
-            if (dup2(*t0, 0) < 0) 
-                error(1,0,"executePipe(): Failed dup2.\n");
-            selectCommand(c, 1, profiling);
-            _exit(c->u.command[1]->status);
+            waitpid(pid1, &status, 0);
         }
-    } else {
-        close(*t0);
-        close(*t1);
-        waitpid(pid1, &status, 0);
+    }else{
+        error(1,0,"executePipe(): Failed initial pipe or fork.\n");
+        _exit(1);
     }
 
     checkTime(&times[2], 0);
@@ -359,6 +357,7 @@ void execute_command(command_t c, int profiling) {
         executeUntil(c, profiling);
     } else {
         error(1,0,"Command not found!\n");
+        _exit(1);
     }
 
     checkTime(&times[2], 0);
