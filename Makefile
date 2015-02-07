@@ -1,75 +1,66 @@
-# CS 111 Lab 1 Makefile
+# Comment/uncomment the following line to disable/enable debugging
+#DEBUG = y
 
-# Copyright 2012-2014 Paul Eggert.
+# Comment this line to get more verbose messages from this Makefile
+V=@
 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# Add your debugging flag (or not) to CFLAGS
+ifeq ($(DEBUG),y)
+  DEBFLAGS = -O -g -DOSPRD_DEBUG # "-O" is needed to expand inlines
+else
+  DEBFLAGS = -O2
+endif
 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+EXTRA_CFLAGS += $(DEBFLAGS)
+EXTRA_CFLAGS += -I..
 
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ifneq ($(KERNELRELEASE),)
+# call from kernel build system
+
+obj-m	:= osprd.o
+
+else
+
+KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+PWD       := $(shell pwd)
+
+default: osprdaccess
+	$(MAKE) osprdaccess
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+
+endif
 
 
-# Build with 'make WERROR_CFLAGS=' to keep going despite warnings.
-# However, don't rest until it's warning-free!
-
-CC = gcc
-WERROR_CFLAGS =
-CFLAGS = -g -Wall -Wextra $(WERROR_CFLAGS) -lrt
-LAB = 1
-DISTDIR = lab1-$(USER)
-CHECK_DIST = ./check-dist
-TAR = tar
-TAR_FLAGS = --numeric-owner --owner=0 --group=0 --mode=go+u,u+w,go-w
-
-all: profsh
-
-TESTS = $(wildcard test*.sh)
-TEST_BASES = $(subst .sh,,$(TESTS))
-
-PROFSH_SOURCES = \
-  alloc.c \
-  execute-command.c \
-  main.c \
-  read-command.c \
-  print-command.c
-PROFSH_OBJECTS = $(subst .c,.o,$(PROFSH_SOURCES))
-
-DIST_SOURCES = \
-  $(PROFSH_SOURCES) alloc.h command.h command-internals.h Makefile \
-  $(TESTS) check-dist COPYING README
-
-profsh: $(PROFSH_OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(PROFSH_OBJECTS)
-
-alloc.o: alloc.h
-execute-command.o main.o print-command.o read-command.o: command.h
-execute-command.o print-command.o read-command.o: command-internals.h
-
-dist: $(DISTDIR).tar.gz
-
-$(DISTDIR).tar.gz: $(DIST_SOURCES) check-dist
-	rm -fr $(DISTDIR)
-	$(TAR) $(TAR_FLAGS) -czf $@.tmp --transform='s,^,$(DISTDIR)/,' \
-	  $(DIST_SOURCES)
-	$(CHECK_DIST) $(DISTDIR)
-	mv $@.tmp $@
-
-Skeleton: $(DIST_SOURCES)
-	$(MAKE) CHECK_DIST=: USER=$@ lab1-$@.tar.gz
-
-check: $(TEST_BASES)
-
-$(TEST_BASES): profsh
-	./$@.sh
 
 clean:
-	rm -fr *.o *~ *.bak *.tar.gz core *.core *.tmp profsh $(DISTDIR)
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions osprdaccess
 
-.PHONY: all dist check $(TEST_BASES) clean Skeleton
+check:
+	perl lab2-tester.pl
+
+depend .depend dep:
+	$(CC) $(EXTRA_CFLAGS) -M *.c > .depend
+
+
+ifeq (.depend,$(wildcard .depend))
+include .depend
+endif
+
+DISTDIR = lab2-$(USER)
+
+tarball: realclean
+	@echo + mk $(DISTDIR).tar.gz
+	$(V)mkdir $(DISTDIR)
+	$(V)tar cf - `ls | grep -v '^$(DISTDIR)\|.*\.qvm\|.*\.tar\.gz\|^\.svn\|^CVS\|.*\.iso\|^binary$$\|^cache$$\|^chroot$$\|^config$$\|^\.stage$$'` | (cd $(DISTDIR) && tar xf -)
+	$(V)/bin/rm -rf `find $(DISTDIR) -name CVS -o -name .svn -print`
+	$(V)date > $(DISTDIR)/tarballstamp
+	$(V)tar cf $(DISTDIR).tar $(DISTDIR)
+	$(V)gzip $(DISTDIR).tar
+	$(V)/bin/rm -rf $(DISTDIR)
+
+realclean: clean
+	@echo + realclean
+	$(V)rm -f write_clean
+	$(V)rm -rf $(DISTDIR) $(DISTDIR).tar.gz
+
+.PHONY: clean realclean tarball export dep depend default check
