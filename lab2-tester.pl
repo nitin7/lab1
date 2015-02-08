@@ -9,125 +9,125 @@ close FOO;
 # single write
     # 1
     [ '(echo test1 | ./osprdaccess -w) && ' .
-      '(./osprdaccess -r 16 | hexdump -C)',
-      "00000000 74 65 73 74 31 0a 00 00 00 00 00 00 00 00 00 00 |test1...........| " .
-      "00000010" ],
+    '(./osprdaccess -r 16 | hexdump -C)',
+    "00000000 74 65 73 74 31 0a 00 00 00 00 00 00 00 00 00 00 |test1...........| " .
+    "00000010" ],
 
 # write with offset
     # 2
     [ '(echo test1 | ./osprdaccess -w -o 5) && ' .
-      '(./osprdaccess -r 16 | hexdump -C)',
-      "00000000 00 00 00 00 00 74 65 73 74 31 0a 00 00 00 00 00 |.....test1......| " .
-      "00000010" ],
+    '(./osprdaccess -r 16 | hexdump -C)',
+    "00000000 00 00 00 00 00 74 65 73 74 31 0a 00 00 00 00 00 |.....test1......| " .
+    "00000010" ],
 
 # write to an offset in next sector
     # 3
     [ '(echo sector2 | ./osprdaccess -w -o 512) && ' .
-      '(./osprdaccess -r 1024| hexdump -C)',
-      "00000000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
-      "* " .
-      "00000200 73 65 63 74 6f 72 32 0a 00 00 00 00 00 00 00 00 |sector2.........| " .
-      "00000210 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
-      "* " .
-      "00000400" ],
+    '(./osprdaccess -r 1024| hexdump -C)',
+    "00000000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
+    "* " .
+    "00000200 73 65 63 74 6f 72 32 0a 00 00 00 00 00 00 00 00 |sector2.........| " .
+    "00000210 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
+    "* " .
+    "00000400" ],
 
 
 # multiple writes
     # 4
     [ '(echo test1 | ./osprdaccess -w) && ' .
-      '(echo test2 | ./osprdaccess -w) && ' .
-      '(./osprdaccess -r 16 | hexdump -C)',
-      "00000000 74 65 73 74 32 0a 00 00 00 00 00 00 00 00 00 00 |test2...........| " .
-      "00000010" ],
+    '(echo test2 | ./osprdaccess -w) && ' .
+    '(./osprdaccess -r 16 | hexdump -C)',
+    "00000000 74 65 73 74 32 0a 00 00 00 00 00 00 00 00 00 00 |test2...........| " .
+    "00000010" ],
 
     # 5
     [ '(echo test1 | ./osprdaccess -w) && ' .
-      '(echo test2 | ./osprdaccess -w -o 5) && ' .
-      '(./osprdaccess -r 16 | hexdump -C)',
-      "00000000 74 65 73 74 31 74 65 73 74 32 0a 00 00 00 00 00 |test1test2......| " .
-      "00000010" ],
+    '(echo test2 | ./osprdaccess -w -o 5) && ' .
+    '(./osprdaccess -r 16 | hexdump -C)',
+    "00000000 74 65 73 74 31 74 65 73 74 32 0a 00 00 00 00 00 |test1test2......| " .
+    "00000010" ],
 
 # delay cases
     # 6
     [ '(echo overwrite | ./osprdaccess -w -d 1) & ' .
-      '(echo hidden | ./osprdaccess -w) && ' .
-      'sleep 1.5 &&' .
-      '(./osprdaccess -r 16 | hexdump -C)',
-      "00000000 6f 76 65 72 77 72 69 74 65 0a 00 00 00 00 00 00 |overwrite.......| " .
-      "00000010" ],
+    '(echo hidden | ./osprdaccess -w) && ' .
+    'sleep 1.5 &&' .
+    '(./osprdaccess -r 16 | hexdump -C)',
+    "00000000 6f 76 65 72 77 72 69 74 65 0a 00 00 00 00 00 00 |overwrite.......| " .
+    "00000010" ],
 
     # 7
     [ '(echo overwrite | ./osprdaccess -w -d 1) & ' .
-      '(./osprdaccess -r 16 | hexdump -C) ' ,
-      "00000000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
-      "00000010" ],
+    '(./osprdaccess -r 16 | hexdump -C) ' ,
+    "00000000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................| " .
+    "00000010" ],
 
     # 8
     [ '(echo foo | ./osprdaccess -w 3) && sleep 1 && ' .
-      '(./osprdaccess -r 3 && ./osprdaccess -r 3) && sleep 4 ',
-      "foofoo"
+    '(./osprdaccess -r 3 && ./osprdaccess -r 3) && sleep 4 ',
+    "foofoo"
     ],
 
 # locking
     # 9
     [ '(echo aa | ./osprdaccess -w 2 -l -d 1) & ' .
-      'sleep 0.5 ; (echo b | ./osprdaccess -w 1 -o 1 -l) ; ' .
-      './osprdaccess -r 2',
-      "ab"
+    'sleep 0.5 ; (echo b | ./osprdaccess -w 1 -o 1 -l) ; ' .
+    './osprdaccess -r 2',
+    "ab"
     ],
 
     # 10
     [ 'echo a | ./osprdaccess -w 1 ; ' .
-      '(./osprdaccess -r -l -d 3 >/dev/null &) ; ' .
-      '(echo b | ./osprdaccess -w -l 1 &) ; ' .
-      'sleep 1 ; ./osprdaccess -r 1',
-      "a"
+    '(./osprdaccess -r -l -d 3 >/dev/null &) ; ' .
+    '(echo b | ./osprdaccess -w -l 1 &) ; ' .
+    'sleep 1 ; ./osprdaccess -r 1',
+    "a"
     ],
 
     # 11
     [ '(./osprdaccess -r 6 -l 1) &' .
-      '(echo foobar | ./osprdaccess -w -l) ',
-      "foobar"
+    '(echo foobar | ./osprdaccess -w -l) ',
+    "foobar"
     ],
 
     # 12
     [ 'echo foobar | ./osprdaccess -w 6 ; ' .
-      '(./osprdaccess -r 6 -l -d 0.2) &' .
-      '(./osprdaccess -r 6 -L 0.2 -d 0.2) &' .
-      '(echo xxxxxx | ./osprdaccess -w -L) ; ' .
-      'sleep 0.6',
-      "ioctl OSPRDIOCTRYACQUIRE: Device or resource busy foobarfoobar"
+    '(./osprdaccess -r 6 -l -d 0.2) &' .
+    '(./osprdaccess -r 6 -L 0.2 -d 0.2) &' .
+    '(echo xxxxxx | ./osprdaccess -w -L) ; ' .
+    'sleep 0.6',
+    "ioctl OSPRDIOCTRYACQUIRE: Device or resource busy foobarfoobar"
     ],
 
 # more complex locking cases
     # 13
     [ '(echo aaa | ./osprdaccess -w 3 -l -d 0.4) & ' .
-      '(sleep 0.2 ; echo bb | ./osprdaccess -w 2 -o 1 -l -d 0.2) & ' .
-      'sleep 0.4 ; (echo c | ./osprdaccess -w 1 -o 2 -l) ; ' .
-      './osprdaccess -r 3',
-      "abc"
+    '(sleep 0.2 ; echo bb | ./osprdaccess -w 2 -o 1 -l -d 0.2) & ' .
+    'sleep 0.4 ; (echo c | ./osprdaccess -w 1 -o 2 -l) ; ' .
+    './osprdaccess -r 3',
+    "abc"
     ],
 
     # 14
     [ '(echo aaa | ./osprdaccess -w 3 -l -d 0.6) & ' .
-      '(sleep 0.2 ; ./osprdaccess -r 3 -l) & ' .
-      'sleep 0.4 ; echo ccc | ./osprdaccess -w 3 -l',
-      "aaa"
+    '(sleep 0.2 ; ./osprdaccess -r 3 -l) & ' .
+    'sleep 0.4 ; echo ccc | ./osprdaccess -w 3 -l',
+    "aaa"
     ],
 
     # 15
     [ '(echo aaa | ./osprdaccess -w 3 -l -d 1) & ' .
-      '(sleep 0.2 ; ./osprdaccess -r 1 -l | sed s/$/X/) & ' .
-      '(sleep 0.4 ; ./osprdaccess -r 1 -l -d 0.2 | sed s/$/Y/) & ' .
-      '(sleep 0.6 ; echo bbb | ./osprdaccess -w 3 -l) & ' .
-      '(sleep 0.8 ; ./osprdaccess -r 1 -l | (sleep 0.2 ; sed s/$/Z/))',
-      "aXaYbZ"
+    '(sleep 0.2 ; ./osprdaccess -r 1 -l | sed s/$/X/) & ' .
+    '(sleep 0.4 ; ./osprdaccess -r 1 -l -d 0.2 | sed s/$/Y/) & ' .
+    '(sleep 0.6 ; echo bbb | ./osprdaccess -w 3 -l) & ' .
+    '(sleep 0.8 ; ./osprdaccess -r 1 -l | (sleep 0.2 ; sed s/$/Z/))',
+    "aXaYbZ"
     ],
 
 # interrupting a blocked lock doesn't destroy the wait order
     # 16
     [ # Run in a separate subshell with job control enabled.
-      '(set -m; ' .
+    '(set -m; ' .
       # (1) At 0s, grab write lock; after 0.5s, write 'aaa' and exit
       '(echo aaa | ./osprdaccess -w 3 -l -d 0.5) & ' .
       # (2) At 0.1s, wait for read lock; print first character then X
@@ -143,12 +143,12 @@ close FOO;
       'sleep 0.3 ; kill -9 -$bgshell2 ' .
       # Clean up separate shell.
       ') 2>/dev/null',
-      "aY"
-    ],
+"aY"
+],
 
     # 17
     [ # Run in a separate subshell with job control enabled.
-      '(set -m; ' .
+    '(set -m; ' .
       # (1) At 0s, grab write lock; after 0.5s, write 'aaa' and exit
       '(echo aaa | ./osprdaccess -w 3 -l -d 0.5) & ' .
       # (2) At 0.1s, wait for read lock; print first character then X
@@ -164,9 +164,63 @@ close FOO;
       'sleep 0.3 ; kill -9 -$bgshell1 ' .
       # Clean up separate shell.
       ') 2>/dev/null',
-      "aX"
+"aX"
+],
+    # 18
+    [ 'echo foo | ./osprdaccess -w -l /dev/osprda /dev/osprda' ,
+    'ioctl OSPRDIOCACQUIRE: Resource deadlock avoided'
     ],
-    );
+
+    # 19
+    [ 'echo foo | ./osprdaccess -w -l 0.5 /dev/osprda /dev/osprdb&  ' .
+    'sleep 0.2; echo bar | ./osprdaccess -w -l 0.5 /dev/osprdb /dev/osprda ' ,
+    "ioctl OSPRDIOCACQUIRE: Resource deadlock avoided ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+    ],
+    
+#20
+[ '(echo foo | ./osprdaccess -w -l); ' .
+'(./osprdaccess -r -l /dev/osprda -r -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#21
+[ '(echo foo | ./osprdaccess -r -l /dev/osprda -w -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#22
+[ '(echo foo | ./osprdaccess -r -l /dev/osprda -w -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#23
+[ '(echo foo | ./osprdaccess -w -l /dev/osprda /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#24
+[ '(echo foo | ./osprdaccess -w -l /dev/osprda -r -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#25
+[ '(echo foo | ./osprdaccess -w -l /dev/osprda -w -l 1 /dev/osprdb & ' .
+  './osprdaccess -r -l /dev/osprdb -r -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#26
+[ '(echo foo | ./osprdaccess -w -l /dev/osprda -r -l 1 /dev/osprdb & ' .
+  './osprdaccess -w -l /dev/osprdb -r -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#27
+[ '(echo foo | ./osprdaccess -w -l /dev/osprda -r -l 1 /dev/osprdb & ' .
+  './osprdaccess -w -l /dev/osprdb -r -l 1 /dev/osprdc & ' .
+  './osprdaccess -w -l /dev/osprdc -r -l 1 /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided ioctl OSPRDIOCACQUIRE: Resource deadlock avoided ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+#28
+[ '(echo foo | ./osprdaccess -w -l 1 /dev/osprda & ' .
+  './osprdaccess -w -l 2 /dev/osprdb -r -l /dev/osprda)' ,
+"ioctl OSPRDIOCACQUIRE: Resource deadlock avoided"
+],
+
+);
 
 my($ntest) = 0;
 
@@ -179,20 +233,20 @@ my(@disks) = ("/dev/osprda", "/dev/osprdb", "/dev/osprdc", "/dev/osprdd");
 
 my(@testarr, $anytests);
 foreach $arg (@ARGV) {
-    if ($arg =~ /^\d+$/) {
-	$anytests = 1;
-	$testarr[$arg] = 1;
-    }
+  if ($arg =~ /^\d+$/) {
+    $anytests = 1;
+    $testarr[$arg] = 1;
+  }
 }
 
 foreach $test (@tests) {
 
-    $ntest++;
-    next if $anytests && !$testarr[$ntest];
+  $ntest++;
+  next if $anytests && !$testarr[$ntest];
 
     # clean up the disk for the next test
     foreach $disk (@disks) {
-	`$sh <<< "$zerodiskcmd $disk"`
+      `$sh <<< "$zerodiskcmd $disk"`
     }
 
     $ntestdone++;
@@ -213,9 +267,9 @@ foreach $test (@tests) {
     next if $result eq $want;
     print STDERR "Test $ntest FAILED!\n  input was \"$in\"\n  expected output like \"$want\"\n  got \"$result\"\n";
     $ntestfailed++;
-}
+  }
 
-unlink($tempfile);
-my($ntestpassed) = $ntestdone - $ntestfailed;
-print "$ntestpassed of $ntestdone tests passed\n";
-exit(0);
+  unlink($tempfile);
+  my($ntestpassed) = $ntestdone - $ntestfailed;
+  print "$ntestpassed of $ntestdone tests passed\n";
+  exit(0);
