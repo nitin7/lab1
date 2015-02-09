@@ -83,9 +83,16 @@ typedef struct osprd_info {
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
 
-	struct pidList* readLockingPids;
-	struct pidList* writeLockingPids;
+	/* HINT: You may want to add additional fields to help
+	         in detecting deadlock. */
+	//added fields
+	struct pidList* pid_read_lock;
+	struct pidList* pid_write_lock;
 	struct ticketList* exitedTickets;
+    //TUAN: current process uses this to see if it holds other locks on
+    //other open RAM disk files, and not just the current RAM disk
+    //file that it requests the lock.
+	int holdOtherLocks;
 
 	// The following elements are used internally; you don't need
 	// to understand them.
@@ -94,8 +101,6 @@ typedef struct osprd_info {
 	                                //   exclusion in the 'queue'.
 	struct gendisk *gd;             // The generic disk.
 	
-	
-	int holdOtherLocks;
 } osprd_info_t;
 
 #define NOSPRD 4
@@ -140,10 +145,9 @@ void increment_ticket(osprd_info_t *d);
  *   Called when the user reads or writes a sector.
  *   Should perform the read or write, as appropriate.
  */
+ //DONE
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
-	unsigned int req_type;
-	uint8_t* data;
     
     // Normal file system requests not supported
 	if (!blk_fs_request(req)) {
@@ -160,17 +164,13 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	// 'req->buffer' members, and the rq_data_dir() function.
 
 	// Your code here.
-	req_type = rq_data_dir (req);
-	data = d->data + (req->sector) * SECTOR_SIZE;
-    
-	if (req_type == READ) {
-		if (DEBUG) eprintk ("Processing read request...\n");
-		memcpy ((void *) req->buffer, (void *) data, req->current_nr_sectors * SECTOR_SIZE);
-	} else if (req_type == WRITE) {
-		if (DEBUG) eprintk ("Processing write request...\n");
-		memcpy ((void *) data, (void *) req->buffer, req->current_nr_sectors * SECTOR_SIZE);
-    }
+	uint8_t* data = d->data + (req->sector) * SECTOR_SIZE;
+    long size = req->current_nr_sectors * SECTOR_SIZE;
 	
+	if (rq_data_dir(req) == WRITE) 
+		memcpy((void *) data, (void *) req->buffer, size);
+	else if (rq_data_dir(req) == READ)
+		memcpy((void *) req->buffer, (void *) data, size);
 
 	end_request(req, 1);
 }
@@ -190,49 +190,57 @@ static int osprd_open(struct inode *inode, struct file *filp)
 // This function is called when a /dev/osprdX file is finally closed.
 // (If the file descriptor was dup2ed, this function is called only when the
 // last copy is closed.)
+//almost done
 static int osprd_close_last(struct inode *inode, struct file *filp)
 {
-	if (DEBUG) eprintk ("Closing\n");
 	if (filp) {
 		osprd_info_t *d = file2osprd(filp);
 		int filp_writable = filp->f_mode & FMODE_WRITE;
-
 		// EXERCISE: If the user closes a ramdisk file that holds
 		// a lock, release the lock.  Also wake up blocked processes
 		// as appropriate.
 
-		if (d == NULL) {
+		if (d != NULL) {
+			osp_spinlock_t *lock = &(d->mutex);
+			wait_queue_head_t *blockq = &(d->blockq);
+			
+			int readlock = pid_contains(d->pid_read_lock, current->pid);
+			int writelock = pid_contains(d->pid_write_lock, current->pid);
+
+			osp_spin_lock(lock);
+			// Invalid if file hasn't locked ramdisk
+			
+			if (readlock) 
+				pidlist_remove(&d->pid_read_lock, current->pid);
+			if (writelock) 
+				pidlist_remove(&d->pid_write_lock, current->pid);
+
+			if (!readlock && !writelock) {
+				osp_spin_unlock(lock);
+				return -EINVAL;
+			}
+			
+			// Clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
+			if (readlock == NULL && writelock == NULL) {
+				filp->f_flags &= !F_OSPRD_LOCKED;
+			}
+			
+			osp_spin_unlock(lock);
+			wake_up_all(blockq);
+		}
+		else
 			return 1;
-		}
 		
-		osp_spin_lock(&(d->mutex));
-		
-		// Invalid if file hasn't locked ramdisk
-		if (!pid_contains(d->writeLockingPids, current->pid) && !(pid_contains(d->readLockingPids, current->pid))) {
-			osp_spin_unlock(&(d->mutex));
-			return -EINVAL;
-		}
-		
-		if (pid_contains(d->writeLockingPids, current->pid)) {
-			pidlist_remove(&d->writeLockingPids, current->pid);
-		}
-		
-		if (pid_contains(d->readLockingPids, current->pid)) {
-			pidlist_remove(&d->readLockingPids, current->pid);
-		}
-		
-		// Clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
-		if (d->readLockingPids == NULL && d->writeLockingPids == NULL) {
-			filp->f_flags &= !F_OSPRD_LOCKED;
-		}
-		
-		osp_spin_unlock(&(d->mutex));
-		wake_up_all(&(d->blockq));
 	}
 
 	return 0;
 }
 
+void unlockWakeIncrement(osprd_info_t *d) {
+	osp_spin_unlock(&(d->mutex));
+	wake_up_all(&(d->blockq));
+	increment_ticket(d);
+}
 
 /*
  * osprd_lock
@@ -254,6 +262,9 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 	// This line avoids compiler warnings; you may remove it.
 	(void) filp_writable, (void) d;
+
+	int readlock = pid_contains(d->pid_read_lock, current->pid);
+	int writelock = pid_contains(d->pid_write_lock, current->pid);
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
 
@@ -293,14 +304,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Then, block at least until 'd->ticket_tail == local_ticket'.
 		// (Some of these operations are in a critical section and must
 		// be protected by a spinlock; which ones?)
-		if (DEBUG) {
-			eprintk("Attempting to acquire lock: ");
-			if (filp_writable)
-				eprintk("write\n");
-			else
-				eprintk("read\n");
-		}
-		
+
 		
 		/** Ticket + check error cases **/
 		
@@ -310,31 +314,18 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		d->ticket_head++;
 		
 		// Deadlock - if current proc already has other lock
-		if ((pid_contains(d->readLockingPids, current->pid) && filp_writable) ||
-			(pid_contains(d->writeLockingPids, current->pid) && !filp_writable)) {
-			increment_ticket(d);
-			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq));
+		if ((writelock && !filp_writable) || (readlock && filp_writable)) {
+			unlockWakeIncrement(d);
 			return -EDEADLK;
 		}
 		
-		// Deadlock - if current proc holds lock on different file (could be overkill, though)
 		for_each_open_file(current, check_locks, d);
 		if (d->holdOtherLocks) {
 			d->holdOtherLocks = 0;
-			increment_ticket(d);
-			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq));
+			unlockWakeIncrement(d);
 			return -EDEADLK;
 		}
-		
-		// Useless?? Will never go inside the if block
-		// Invalid - if request the same lock that is already held
-		if ((pid_contains(d->writeLockingPids, current->pid) && filp_writable) ||
-			(pid_contains(d->readLockingPids, current->pid) && !filp_writable)) {
-			osp_spin_unlock(&(d->mutex));
-			return -EINVAL;
-		}
+
 		
 		osp_spin_unlock(&(d->mutex));
 		
@@ -343,15 +334,14 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// first argument is wait queue
 		// second argument is condition to wake
 		if (wait_event_interruptible(d->blockq, d->ticket_tail==ticket &&
-									 d->writeLockingPids == NULL &&
-									 (d->readLockingPids == NULL || !filp_writable))) {
+									 d->pid_write_lock == NULL &&
+									 (d->pid_read_lock == NULL || !filp_writable))) {
 			
-			if (d->ticket_tail == ticket) {
-				increment_ticket(d);
-			}
-			else  {  // signal received
+			if (d->ticket_tail != ticket) 
 				tixlist_add(&(d->exitedTickets), ticket);
-			}
+			else   // signal received
+				increment_ticket(d);
+		
 			return -ERESTARTSYS;
 		}
 		
@@ -362,23 +352,13 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		// keep track of the ID processes that are holding lock
 		if (filp_writable)
-			pidlist_add(&(d->writeLockingPids), current->pid);
+			pidlist_add(&(d->pid_write_lock), current->pid);
 		else
-			pidlist_add(&(d->readLockingPids), current->pid);
-		increment_ticket(d);
-		
-		osp_spin_unlock(&(d->mutex));
-		wake_up_all(&(d->blockq));
+			pidlist_add(&(d->pid_read_lock), current->pid);
 
-		if (DEBUG) {
-			eprintk("Acquired lock: ");
-			if (filp_writable)
-				eprintk("write\n");
-			else
-				eprintk("read\n");
-		}
-
+		unlockWakeIncrement(d);
 		return 0;
+
 	} else if (cmd == OSPRDIOCTRYACQUIRE) {
 
 		// EXERCISE: ATTEMPT to lock the ramdisk.
@@ -387,13 +367,6 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// block.  If OSPRDIOCACQUIRE would block or return deadlock,
 		// OSPRDIOCTRYACQUIRE should return -EBUSY.
 		// Otherwise, if we can grant the lock request, return 0.
-		if (DEBUG) {
-			eprintk("Attempting to try acquire lock: ");
-			if (filp_writable)
-				eprintk("write\n");
-			else
-				eprintk("read\n");
-		}
 		
 		/** Ticket + check error cases **/
 		
@@ -403,11 +376,8 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		d->ticket_head++;
 		
 		// Deadlock - if current proc already has complement lock
-		if ((pid_contains(d->readLockingPids, current->pid) && filp_writable) ||
-			(pid_contains(d->writeLockingPids, current->pid) && !filp_writable)) {
-			increment_ticket(d);
-			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq));
+		if ((writelock && !filp_writable) || (readlock && filp_writable)) {
+			unlockWakeIncrement(d);
 			return -EBUSY;
 		}
 		
@@ -415,27 +385,14 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		for_each_open_file(current, check_locks, d);
 		if (d->holdOtherLocks) {
 			d->holdOtherLocks = 0;
-			increment_ticket(d);
-			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq));
+			unlockWakeIncrement(d);
 			return -EBUSY;
-		}
-		
-		// Useless??
-		// invalid to request the same write lock that you already hold
-		if ((pid_contains(d->writeLockingPids, current->pid) && filp_writable) ||
-			(pid_contains(d->readLockingPids, current->pid) && !filp_writable)) {
-			increment_ticket(d);
-			osp_spin_unlock(&(d->mutex));
-			wake_up_all(&(d->blockq));
-			return -EINVAL;
 		}
 		
 		osp_spin_unlock(&(d->mutex));
 		
 		// busy if locks are held
-		if (d->writeLockingPids != NULL || (d->readLockingPids != NULL && filp_writable)) {
-			if (DEBUG) eprintk ("Failed to try acquire lock\n");
+		if (d->pid_write_lock != NULL || (d->pid_read_lock != NULL && filp_writable)) {
 			increment_ticket(d);
 			wake_up_all(&(d->blockq)); // required??
 			return -EBUSY;
@@ -445,14 +402,13 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		osp_spin_lock(&(d->mutex));
 		filp->f_flags |= F_OSPRD_LOCKED;
 		if (filp_writable)
-			pidlist_add(&(d->writeLockingPids), current->pid);
+			pidlist_add(&(d->pid_write_lock), current->pid);
 		else
-			pidlist_add(&(d->readLockingPids), current->pid);
+			pidlist_add(&(d->pid_read_lock), current->pid);
 
-		increment_ticket(d);
-		osp_spin_unlock(&(d->mutex));
-		wake_up_all(&(d->blockq));
+		unlockWakeIncrement(d);
 		return 0;
+
 	} else if (cmd == OSPRDIOCRELEASE) {
 
 		// EXERCISE: Unlock the ramdisk.
@@ -461,25 +417,24 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Otherwise, clear the lock from filp->f_flags, wake up
 		// the wait queue, perform any additional accounting steps
 		// you need, and return 0.
-		if (DEBUG) eprintk("Release\n");
 		osp_spin_lock(&(d->mutex));
 		
 		// if file hasn't locked the ramdisk, return -EINVAL.
-		if (!pid_contains(d->writeLockingPids, current->pid) && !(pid_contains(d->readLockingPids, current->pid))) {
+		if (!pid_contains(d->pid_write_lock, current->pid) && !(pid_contains(d->pid_read_lock, current->pid))) {
 			osp_spin_unlock(&(d->mutex));
 			return -EINVAL;
 		}
 		
-		if (pid_contains(d->writeLockingPids, current->pid)) {
-			pidlist_remove(&d->writeLockingPids, current->pid);
+		if (pid_contains(d->pid_write_lock, current->pid)) {
+			pidlist_remove(&d->pid_write_lock, current->pid);
 		}
 		
-		if (pid_contains(d->readLockingPids, current->pid)) {
-			pidlist_remove(&d->readLockingPids, current->pid);
+		if (pid_contains(d->pid_read_lock, current->pid)) {
+			pidlist_remove(&d->pid_read_lock, current->pid);
 		}
 		
 		// clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
-		if (d->readLockingPids == NULL && d->writeLockingPids == NULL) {
+		if (d->pid_read_lock == NULL && d->pid_write_lock == NULL) {
 			filp->f_flags &= !F_OSPRD_LOCKED;
 		}
 		
@@ -500,13 +455,13 @@ static void osprd_setup(osprd_info_t *d)
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
-	d->readLockingPids = NULL;
-	d->writeLockingPids = NULL;
+	d->pid_read_lock = NULL;
+	d->pid_write_lock = NULL;
 	d->exitedTickets = NULL;
 	d->holdOtherLocks = 0;
 }
 
-
+//our functions start---------------------------------------------
 void pidlist_add(struct pidList** list, pid_t pid) {
 	
 	struct pidNode* newNode;
@@ -670,7 +625,7 @@ int tixlist_contains(struct ticketList* list, unsigned ticket) {
 void check_locks(struct file *filp, osprd_info_t *d) {
 	osprd_info_t *otherDisk;
 	if ((otherDisk = file2osprd(filp)) != NULL) {
-		if (pid_contains(otherDisk->readLockingPids, current->pid) || pid_contains(otherDisk->writeLockingPids, current->pid)) {
+		if (pid_contains(otherDisk->pid_read_lock, current->pid) || pid_contains(otherDisk->pid_write_lock, current->pid)) {
 			d->holdOtherLocks = 1;
 			return;
 		}
@@ -690,6 +645,8 @@ void increment_ticket(osprd_info_t *d) {
 		}
 	}
 }
+//our functions end
+
 
 /*****************************************************************************/
 /*         THERE IS NO NEED TO UNDERSTAND ANY CODE BELOW THIS LINE!          */
