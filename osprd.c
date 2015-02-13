@@ -45,25 +45,16 @@ MODULE_AUTHOR("Skeletor");
 static int nsectors = 32;
 module_param(nsectors, int, 0);
 
-
-struct pidNode {
-	pid_t pid;
-	struct pidNode* next;
+struct pidArray{
+	pid_t *array;
+	size_t used;
+	size_t size;
 };
 
-struct pidList {
-	struct pidNode* head;
-	int size;
-};
-
-struct ticketNode {
-	unsigned ticket;
-	struct ticketNode* next;
-};
-
-struct ticketList {
-	struct ticketNode* head;
-	int size;
+struct ticketArray{
+	unsigned int *array;
+	size_t used;
+	size_t size;
 };
 
 /* The internal representation of our device. */
@@ -86,9 +77,10 @@ typedef struct osprd_info {
 	/* HINT: You may want to add additional fields to help
 	         in detecting deadlock. */
 	//added fields
-	struct pidList* pid_read_lock;
-	struct pidList* pid_write_lock;
-	struct ticketList* exitedTickets;
+
+	struct pidArray* pid_read_lock;
+	struct pidArray* pid_write_lock;
+	struct ticketArray* exitedTickets;
     //TUAN: current process uses this to see if it holds other locks on
     //other open RAM disk files, and not just the current RAM disk
     //file that it requests the lock.
@@ -131,14 +123,18 @@ static void for_each_open_file(struct task_struct *task,
 
 
 // Function declarations
-void pidlist_add(struct pidList** list, pid_t pid);
-void pidlist_remove(struct pidList** list, pid_t pid);
-int pid_contains(struct pidList* list, pid_t pid);
-void tixlist_add(struct ticketList** list, unsigned ticket);
-void tixlist_remove(struct ticketList** list, unsigned ticket);
-int tixlist_contains(struct ticketList* list, unsigned ticket);
 void check_locks(struct file *filp, osprd_info_t *d);
 void increment_ticket(osprd_info_t *d);
+
+void pidarray_init(struct pidArray **a, size_t initialSize);
+void pidarray_add(struct pidArray **a, pid_t pid);
+int pidarray_contains(struct pidArray *a, pid_t pid);
+void pidarray_remove(struct pidArray **a, pid_t pid);
+
+void ticketarray_init(struct ticketArray **a, size_t initialSize);
+void ticketarray_add(struct ticketArray **a, pid_t pid);
+int ticketarray_contains(struct ticketArray *a, pid_t pid);
+void ticketarray_remove(struct ticketArray **a, pid_t pid);
 
 /*
  * osprd_process_request(d, req)
@@ -204,16 +200,16 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			osp_spinlock_t *lock = &(d->mutex);
 			wait_queue_head_t *blockq = &(d->blockq);
 			
-			int readlock = pid_contains(d->pid_read_lock, current->pid);
-			int writelock = pid_contains(d->pid_write_lock, current->pid);
+			int readlock = pidarray_contains(d->pid_read_lock, current->pid);
+			int writelock = pidarray_contains(d->pid_write_lock, current->pid);
 
 			osp_spin_lock(lock);
 			// Invalid if file hasn't locked ramdisk
 			
 			if (readlock) 
-				pidlist_remove(&d->pid_read_lock, current->pid);
+				pidarray_remove(&d->pid_read_lock, current->pid);
 			if (writelock) 
-				pidlist_remove(&d->pid_write_lock, current->pid);
+				pidarray_remove(&d->pid_write_lock, current->pid);
 
 			if (!readlock && !writelock) {
 				osp_spin_unlock(lock);
@@ -263,8 +259,8 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	// This line avoids compiler warnings; you may remove it.
 	(void) filp_writable, (void) d;
 
-	int readlock = pid_contains(d->pid_read_lock, current->pid);
-	int writelock = pid_contains(d->pid_write_lock, current->pid);
+	int readlock = pidarray_contains(d->pid_read_lock, current->pid);
+	int writelock = pidarray_contains(d->pid_write_lock, current->pid);
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
 
@@ -338,7 +334,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 									 (d->pid_read_lock == NULL || !filp_writable))) {
 			
 			if (d->ticket_tail != ticket) 
-				tixlist_add(&(d->exitedTickets), ticket);
+				ticketarray_add(&(d->exitedTickets), ticket);
 			else   // signal received
 				increment_ticket(d);
 		
@@ -352,9 +348,9 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		// keep track of the ID processes that are holding lock
 		if (filp_writable)
-			pidlist_add(&(d->pid_write_lock), current->pid);
+			pidarray_add(&(d->pid_write_lock), current->pid);
 		else
-			pidlist_add(&(d->pid_read_lock), current->pid);
+			pidarray_add(&(d->pid_read_lock), current->pid);
 
 		unlockWakeIncrement(d);
 		return 0;
@@ -402,9 +398,9 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		osp_spin_lock(&(d->mutex));
 		filp->f_flags |= F_OSPRD_LOCKED;
 		if (filp_writable)
-			pidlist_add(&(d->pid_write_lock), current->pid);
+			pidarray_add(&(d->pid_write_lock), current->pid);
 		else
-			pidlist_add(&(d->pid_read_lock), current->pid);
+			pidarray_add(&(d->pid_read_lock), current->pid);
 
 		unlockWakeIncrement(d);
 		return 0;
@@ -420,17 +416,17 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		osp_spin_lock(&(d->mutex));
 		
 		// if file hasn't locked the ramdisk, return -EINVAL.
-		if (!pid_contains(d->pid_write_lock, current->pid) && !(pid_contains(d->pid_read_lock, current->pid))) {
+		if (!pidarray_contains(d->pid_write_lock, current->pid) && !(pidarray_contains(d->pid_read_lock, current->pid))) {
 			osp_spin_unlock(&(d->mutex));
 			return -EINVAL;
 		}
 		
-		if (pid_contains(d->pid_write_lock, current->pid)) {
-			pidlist_remove(&d->pid_write_lock, current->pid);
+		if (pidarray_contains(d->pid_write_lock, current->pid)) {
+			pidarray_remove(&d->pid_write_lock, current->pid);
 		}
 		
-		if (pid_contains(d->pid_read_lock, current->pid)) {
-			pidlist_remove(&d->pid_read_lock, current->pid);
+		if (pidarray_contains(d->pid_read_lock, current->pid)) {
+			pidarray_remove(&d->pid_read_lock, current->pid);
 		}
 		
 		// clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
@@ -455,177 +451,100 @@ static void osprd_setup(osprd_info_t *d)
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
-	d->pid_read_lock = NULL;
-	d->pid_write_lock = NULL;
-	d->exitedTickets = NULL;
+	pidarray_init(&d->pid_read_lock, 100000);
+	pidarray_init(&d->pid_write_lock, 100000);
+	ticketarray_init(&d->exitedTickets, 100000);
 	d->holdOtherLocks = 0;
 }
 
-//our functions start---------------------------------------------
-void pidlist_add(struct pidList** list, pid_t pid) {
-	
-	struct pidNode* newNode;
-	//check if need to initialize list
-	if (*list == NULL) {
-		//kzalloc allocates the kernel memory and zero it before return the pointer.
-		//using GFP_ATOMIC to prevent the kernel from block your current memory allocation.
-		//Another commonly used flag is GFP_KERNEL which specifies a normal kernel allocation.
-		//Kernel memory is limited to about 1GB of physical and virtual memory and is not pageable.
-		
-		*list = kzalloc(sizeof(struct pidList), GFP_ATOMIC);
-		(*list)->head = NULL;
-		(*list)->size = 0;
-	}
-	newNode = kzalloc(sizeof(struct pidNode), GFP_ATOMIC);
-	newNode->pid = pid;
-	if ((*list)->head == NULL) {
-		(*list)->head = newNode;
-		newNode->next = NULL;
-	}
-	else {
-		newNode->next = (*list)->head;
-		(*list)->head = newNode;
-	}
-	(*list)->size++;
+void pidarray_init(struct pidArray **a, size_t initialSize) {
+   *a = kzalloc(sizeof(struct pidArray), GFP_ATOMIC);
+  (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
+  (*a)->used = 0;
+  (*a)->size = initialSize;
 }
 
-//Note: pid can appear many places in the list. This function removes all
-//occurances of pid.
-//works even if pid is not in list
-void pidlist_remove(struct pidList** list, pid_t pid) {
-	
-	struct pidNode* cur;
-	struct pidNode* toDelete;
-	
-	if (list == NULL) {
-		return;
+void pidarray_add(struct pidArray **a, pid_t pid){
+	if((*a)->used == (*a)->size){
+		(*a)->size *= 2;
+		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
+		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
+		kfree((*a)->array);
+		(*a)->array = arr;
 	}
-	
-	cur = (*list)->head;
-	if (cur == NULL) {
-		return;
-	}
-	
-	//if pid matches the head node
-	if (cur->pid == pid) {
-		(*list)->head = cur->next;
-		kfree(cur); //kfree frees kernel memory
-		(*list)->size--;
-	}
-	
-	//remove other occurances of pid in the list.
-	while (cur->next != NULL) {
-		if (cur->next->pid == pid) {
-			toDelete = cur->next;
-			cur->next = cur->next->next;
-			kfree(toDelete);
-			(*list)->size--;
-			return;
-		}
-		cur = cur->next;
-	}
-	if ((*list)->size == 0) {
-		//deallocate list so no memory leaks
-		kfree(*list);
-		*list = NULL;
-	}
+	(*a)->array[(*a)->used++] = pid;
 }
 
-//returns 1 if pid is in the list, 0 otherwise
-int pid_contains(struct pidList* list, pid_t pid) {
-	
-	struct pidNode* cur;
-	if (list == NULL) {
-		return 0;
-	}
-	cur = list->head;
-	while (cur != NULL) {
-		if (cur->pid == pid) {
+int pidarray_contains(struct pidArray *a, pid_t pid){
+	int i;
+	for(i = 0; i < a->used; i++){
+		if((a->array[i]) == pid){
 			return 1;
 		}
-		cur = cur->next;
 	}
 	return 0;
 }
 
-void tixlist_add(struct ticketList** list, unsigned ticket) {
-	struct ticketNode* newNode;
-	//check if need to initialize list
-	if (*list == NULL) {
-		*list = kzalloc(sizeof(struct ticketList), GFP_ATOMIC);
-		(*list)->head = NULL;
-		(*list)->size = 0;
-	}
-	newNode = kzalloc(sizeof(struct ticketNode), GFP_ATOMIC);
-	newNode->ticket = ticket;
-	if ((*list)->head == NULL) {
-		(*list)->head = newNode;
-		newNode->next = NULL;
-	}
-	else {
-		newNode->next = (*list)->head;
-		(*list)->head = newNode;
-	}
-	(*list)->size++;
-}
-
-//works even if ticket is not in list
-void tixlist_remove(struct ticketList** list, unsigned ticket) {
-	
-	struct ticketNode* cur;
-	struct ticketNode* toDelete;
-	
-	if (list == NULL) {
-		return;
-	}
-	
-	cur = (*list)->head;
-	if (cur == NULL) {
-		return;
-	}
-	if (cur->ticket == ticket) {
-		(*list)->head = cur->next;
-		kfree(cur);
-		(*list)->size--;
-	}
-	while (cur->next != NULL) {
-		if (cur->next->ticket == ticket) {
-			toDelete = cur->next;
-			cur->next = cur->next->next;
-			kfree(toDelete);
-			(*list)->size--;
-			return;
+void pidarray_remove(struct pidArray **a, pid_t pid){
+	int i;
+	for(i = 0; i < (*a)->used; i++){
+		if ((*a)->array[i] == pid){
+			//memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(int));
+			int j;
+			for(j = i; j < ((*a)->used)-1; j++){
+				(*a)->array[j] = (*a)->array[j+1];
+			}
+			(*a)->used--;
 		}
-		cur = cur->next;
-	}
-	if ((*list)->size == 0) {
-		//deallocate list so no memory leaks
-		kfree(*list);
-		*list = NULL;
 	}
 }
 
 
-int tixlist_contains(struct ticketList* list, unsigned ticket) {
-	
-	struct ticketNode* cur;
-	if (list == NULL) {
-		return 0;
+void ticketarray_init(struct ticketArray **a, size_t initialSize) {
+   *a = kzalloc(sizeof(struct ticketArray), GFP_ATOMIC);
+  (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
+  (*a)->used = 0;
+  (*a)->size = initialSize;
+}
+
+void ticketarray_add(struct ticketArray **a, pid_t pid){
+	if((*a)->used == (*a)->size){
+		(*a)->size *= 2;
+		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
+		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
+		kfree((*a)->array);
+		(*a)->array = arr;
 	}
-	cur = list->head;
-	while (cur != NULL) {
-		if (cur->ticket == ticket) {
+	(*a)->array[(*a)->used++] = pid;
+}
+
+int ticketarray_contains(struct ticketArray *a, pid_t pid){
+	int i;
+	for(i = 0; i < a->used; i++){
+		if(a->array[i] == pid){
 			return 1;
 		}
-		cur = cur->next;
 	}
 	return 0;
+}
+
+void ticketarray_remove(struct ticketArray **a, pid_t pid){
+	int i;
+	for(i = 0; i < (*a)->used; i++){
+		if ((*a)->array[i] == pid){
+			int j;
+			for(j = i; j < ((*a)->used)-1; j++){
+				(*a)->array[j] = (*a)->array[j+1];
+			}
+			(*a)->used--;
+		}
+	}
 }
 
 void check_locks(struct file *filp, osprd_info_t *d) {
 	osprd_info_t *otherDisk;
 	if ((otherDisk = file2osprd(filp)) != NULL) {
-		if (pid_contains(otherDisk->pid_read_lock, current->pid) || pid_contains(otherDisk->pid_write_lock, current->pid)) {
+		if (pidarray_contains(otherDisk->pid_read_lock, current->pid) || pidarray_contains(otherDisk->pid_write_lock, current->pid)) {
 			d->holdOtherLocks = 1;
 			return;
 		}
@@ -636,12 +555,12 @@ void increment_ticket(osprd_info_t *d) {
 	while (++(d->ticket_tail)) {//without this, program will be paused
 		//if some processes already died and can't handle the ticket.
 		//we make sure only pass the alive ticket to alive processes.
-		if (!tixlist_contains(d->exitedTickets, d->ticket_tail)) {
+		if (!ticketarray_contains(d->exitedTickets, d->ticket_tail)) {
 			break; //good. The next process is still alive to accept this ticket.
 		}
 		else {
 			//no one hanles this ticket.
-			tixlist_remove(&(d->exitedTickets), d->ticket_tail);
+			ticketarray_remove(&(d->exitedTickets), d->ticket_tail);
 		}
 	}
 }
