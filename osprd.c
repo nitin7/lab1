@@ -263,7 +263,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	int writelock = pidarray_contains(d->pid_write_lock, current->pid);
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
-
+	//printk(KERN_INFO "CMD %d\n", cmd);
 	if (cmd == OSPRDIOCACQUIRE) {
 
 		// EXERCISE: Lock the ramdisk.
@@ -305,11 +305,13 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		/** Ticket + check error cases **/
 		
 		// Get ticket
+		//printk(KERN_INFO "%s\n", "GETTING TICKET");
 		osp_spin_lock(&(d->mutex));
 		ticket = d->ticket_head;
 		d->ticket_head++;
 		
 		// Deadlock - if current proc already has other lock
+		//printk(KERN_INFO "%s\n", "CHECKING FOR DEADLOCK");
 		if ((writelock && !filp_writable) || (readlock && filp_writable)) {
 			unlockWakeIncrement(d);
 			return -EDEADLK;
@@ -322,17 +324,17 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			return -EDEADLK;
 		}
 
-		
+		//printk(KERN_INFO "%s\n", "CALLING spin_unlock");
 		osp_spin_unlock(&(d->mutex));
 		
 		/** Blocking **/
-		
+		//printk(KERN_INFO "%s\n", "CHECKING wait_event_interruptible");
 		// first argument is wait queue
 		// second argument is condition to wake
 		if (wait_event_interruptible(d->blockq, d->ticket_tail==ticket &&
-									 d->pid_write_lock == NULL &&
-									 (d->pid_read_lock == NULL || !filp_writable))) {
-			
+									 d->pid_write_lock->used == 0 &&
+									 (d->pid_read_lock->used == 0 || !filp_writable))) {
+			//printk(KERN_INFO "%s\n", "INSIDE wait_event_interruptible");
 			if (d->ticket_tail != ticket) 
 				ticketarray_add(&(d->exitedTickets), ticket);
 			else   // signal received
@@ -342,11 +344,12 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		}
 		
 		/** Obtain lock **/
-		
+		//printk(KERN_INFO "%s\n", "OBTAINING LOCK");
 		osp_spin_lock(&(d->mutex));
 		filp->f_flags |= F_OSPRD_LOCKED; // claim lock
 		
 		// keep track of the ID processes that are holding lock
+		//printk(KERN_INFO "FILP_WRITABLE %d\n", filp_writable);
 		if (filp_writable)
 			pidarray_add(&(d->pid_write_lock), current->pid);
 		else
@@ -388,7 +391,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		osp_spin_unlock(&(d->mutex));
 		
 		// busy if locks are held
-		if (d->pid_write_lock != NULL || (d->pid_read_lock != NULL && filp_writable)) {
+		if (d->pid_write_lock->used != 0 || (d->pid_read_lock->used != 0 && filp_writable)) {
 			increment_ticket(d);
 			wake_up_all(&(d->blockq)); // required??
 			return -EBUSY;
@@ -430,7 +433,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		}
 		
 		// clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
-		if (d->pid_read_lock == NULL && d->pid_write_lock == NULL) {
+		if (d->pid_read_lock->used == 0 && d->pid_write_lock->used == 0) {
 			filp->f_flags &= !F_OSPRD_LOCKED;
 		}
 		
@@ -451,9 +454,9 @@ static void osprd_setup(osprd_info_t *d)
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
-	pidarray_init(&d->pid_read_lock, 100000);
-	pidarray_init(&d->pid_write_lock, 100000);
-	ticketarray_init(&d->exitedTickets, 100000);
+	pidarray_init(&d->pid_read_lock, 50);
+	pidarray_init(&d->pid_write_lock, 50);
+	ticketarray_init(&d->exitedTickets, 50);
 	d->holdOtherLocks = 0;
 }
 
@@ -465,7 +468,9 @@ void pidarray_init(struct pidArray **a, size_t initialSize) {
 }
 
 void pidarray_add(struct pidArray **a, pid_t pid){
+	//printk(KERN_INFO "Adding pid %d to pidArray\n", pid);
 	if((*a)->used == (*a)->size){
+		//printk(KERN_INFO "Resizing pidArray with pid %d\n", pid);
 		(*a)->size *= 2;
 		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
 		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
@@ -476,6 +481,7 @@ void pidarray_add(struct pidArray **a, pid_t pid){
 }
 
 int pidarray_contains(struct pidArray *a, pid_t pid){
+	//printk(KERN_INFO "Checking for pid %d in pidArray\n", pid);
 	int i;
 	for(i = 0; i < a->used; i++){
 		if((a->array[i]) == pid){
@@ -486,14 +492,15 @@ int pidarray_contains(struct pidArray *a, pid_t pid){
 }
 
 void pidarray_remove(struct pidArray **a, pid_t pid){
+	//printk(KERN_INFO "Removing pid %d in pidArray\n", pid);
 	int i;
 	for(i = 0; i < (*a)->used; i++){
 		if ((*a)->array[i] == pid){
-			//memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(int));
-			int j;
-			for(j = i; j < ((*a)->used)-1; j++){
-				(*a)->array[j] = (*a)->array[j+1];
-			}
+			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(int));
+			// int j;
+			// for(j = i; j < ((*a)->used)-1; j++){
+			// 	(*a)->array[j] = (*a)->array[j+1];
+			// }
 			(*a)->used--;
 		}
 	}
@@ -532,10 +539,11 @@ void ticketarray_remove(struct ticketArray **a, pid_t pid){
 	int i;
 	for(i = 0; i < (*a)->used; i++){
 		if ((*a)->array[i] == pid){
-			int j;
-			for(j = i; j < ((*a)->used)-1; j++){
-				(*a)->array[j] = (*a)->array[j+1];
-			}
+			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(unsigned int));
+			// int j;
+			// for(j = i; j < ((*a)->used)-1; j++){
+			// 	(*a)->array[j] = (*a)->array[j+1];
+			// }
 			(*a)->used--;
 		}
 	}
