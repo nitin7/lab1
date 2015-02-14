@@ -19,7 +19,6 @@
 
 /* The size of an OSPRD sector. */
 #define SECTOR_SIZE	512
-#define DEBUG 0
 
 /* This flag is added to an OSPRD file's f_flags to indicate that the file
  * is locked. */
@@ -45,13 +44,13 @@ MODULE_AUTHOR("Skeletor");
 static int nsectors = 32;
 module_param(nsectors, int, 0);
 
-struct pidArray{
+struct pidArray {
 	pid_t *array;
 	size_t used;
 	size_t size;
 };
 
-struct ticketArray{
+struct ticketArray {
 	unsigned int *array;
 	size_t used;
 	size_t size;
@@ -77,15 +76,12 @@ typedef struct osprd_info {
 	/* HINT: You may want to add additional fields to help
 	         in detecting deadlock. */
 	//added fields
-
-	struct pidArray* pid_read_lock;
-	struct pidArray* pid_write_lock;
 	struct ticketArray* exitedTickets;
-    //TUAN: current process uses this to see if it holds other locks on
-    //other open RAM disk files, and not just the current RAM disk
-    //file that it requests the lock.
-	int holdOtherLocks;
 
+	struct pidArray* pid_write_lock;
+	struct pidArray* pid_read_lock;
+
+	int any_other_lock_count;
 	// The following elements are used internally; you don't need
 	// to understand them.
 	struct request_queue *queue;    // The device request queue.
@@ -100,6 +96,19 @@ static osprd_info_t osprds[NOSPRD];
 
 
 // Declare useful helper functions
+
+void ticket_to_next_process(osprd_info_t *d);
+void unlockWakeIncrement(osprd_info_t *d);
+void init_pid_array(struct pidArray **a, size_t initialSize);
+void add_to_pid_array(struct pidArray **a, pid_t pid);
+int in_pid_array(struct pidArray *a, pid_t pid);
+void remove_from_pid_array(struct pidArray **a, pid_t pid);
+
+void init_ticket_array(struct ticketArray **a, size_t initialSize);
+void add_to_ticket_array(struct ticketArray **a, pid_t pid);
+int in_ticket_array(struct ticketArray *a, pid_t pid);
+void remove_from_ticket_array(struct ticketArray **a, pid_t pid);
+void locks(struct file *filp, osprd_info_t *d);
 
 /*
  * file2osprd(filp)
@@ -121,32 +130,135 @@ static void for_each_open_file(struct task_struct *task,
 						osprd_info_t *user_data),
 			       osprd_info_t *user_data);
 
+void ticket_to_next_process(osprd_info_t *d) {
+	while (++(d->ticket_tail)) {
+		int found = in_ticket_array(d->exitedTickets, d->ticket_tail);
+		if (found) 
+			remove_from_ticket_array(&(d->exitedTickets), d->ticket_tail);
+		else
+			break;
+	}
+}
 
-// Function declarations
-void check_locks(struct file *filp, osprd_info_t *d);
-void increment_ticket(osprd_info_t *d);
+void unlockWakeIncrement(osprd_info_t *d) {
+	osp_spin_unlock(&(d->mutex));
+	wake_up_all(&(d->blockq));
+	ticket_to_next_process(d);
+}
 
-void pidarray_init(struct pidArray **a, size_t initialSize);
-void pidarray_add(struct pidArray **a, pid_t pid);
-int pidarray_contains(struct pidArray *a, pid_t pid);
-void pidarray_remove(struct pidArray **a, pid_t pid);
 
-void ticketarray_init(struct ticketArray **a, size_t initialSize);
-void ticketarray_add(struct ticketArray **a, pid_t pid);
-int ticketarray_contains(struct ticketArray *a, pid_t pid);
-void ticketarray_remove(struct ticketArray **a, pid_t pid);
+void init_pid_array(struct pidArray **a, size_t initialSize) {
+    *a = kzalloc(sizeof(struct pidArray), GFP_ATOMIC);
+    (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
+    (*a)->used = 0;
+    (*a)->size = initialSize;
+}
+
+void add_to_pid_array(struct pidArray **a, pid_t pid){
+	//printk(KERN_INFO "Adding pid %d to pidArray\n", pid);
+	if((*a)->used == (*a)->size){
+		//printk(KERN_INFO "Resizing pidArray with pid %d\n", pid);
+		(*a)->size *= 2;
+		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
+		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
+		kfree((*a)->array);
+		(*a)->array = arr;
+	}
+	(*a)->array[(*a)->used++] = pid;
+}
+
+int in_pid_array(struct pidArray *a, pid_t pid){
+	//printk(KERN_INFO "Checking for pid %d in pidArray\n", pid);
+	int i;
+	for(i = 0; i < a->used; i++){
+		if((a->array[i]) == pid){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void remove_from_pid_array(struct pidArray **a, pid_t pid){
+	//printk(KERN_INFO "Removing pid %d in pidArray\n", pid);
+	int i;
+	for(i = 0; i < (*a)->used; i++){
+		if ((*a)->array[i] == pid){
+			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(int));
+			// int j;
+			// for(j = i; j < ((*a)->used)-1; j++){
+			// 	(*a)->array[j] = (*a)->array[j+1];
+			// }
+			(*a)->used--;
+		}
+	}
+}
+
+
+void init_ticket_array(struct ticketArray **a, size_t initialSize) {
+   *a = kzalloc(sizeof(struct ticketArray), GFP_ATOMIC);
+  (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
+  (*a)->used = 0;
+  (*a)->size = initialSize;
+}
+
+void add_to_ticket_array(struct ticketArray **a, pid_t pid){
+	if((*a)->used == (*a)->size){
+		(*a)->size *= 2;
+		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
+		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
+		kfree((*a)->array);
+		(*a)->array = arr;
+	}
+	(*a)->array[(*a)->used++] = pid;
+}
+
+int in_ticket_array(struct ticketArray *a, pid_t pid){
+	int i;
+	for(i = 0; i < a->used; i++){
+		if(a->array[i] == pid){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void remove_from_ticket_array(struct ticketArray **a, pid_t pid){
+	int i;
+	for(i = 0; i < (*a)->used; i++){
+		if ((*a)->array[i] == pid){
+			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(unsigned int));
+			// int j;
+			// for(j = i; j < ((*a)->used)-1; j++){
+			// 	(*a)->array[j] = (*a)->array[j+1];
+			// }
+			(*a)->used--;
+		}
+	}
+}
+
+void locks(struct file *filp, osprd_info_t *dev) {
+
+	osprd_info_t *dev2 = file2osprd(filp);
+
+	if (dev2 != NULL) {
+		int readlock = in_pid_array(dev2->pid_read_lock, current->pid);
+		int writelock = in_pid_array(dev2->pid_write_lock, current->pid);
+		if (writelock || readlock) {
+			dev->any_other_lock_count = 1;
+			return;
+		}
+	}
+}
+
 
 /*
  * osprd_process_request(d, req)
  *   Called when the user reads or writes a sector.
  *   Should perform the read or write, as appropriate.
  */
- //DONE
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
-    
-    // Normal file system requests not supported
-	if (!blk_fs_request(req)) {
+   	if (!blk_fs_request(req)) {
 		end_request(req, 0);
 		return;
 	}
@@ -200,23 +312,21 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 			osp_spinlock_t *lock = &(d->mutex);
 			wait_queue_head_t *blockq = &(d->blockq);
 			
-			int readlock = pidarray_contains(d->pid_read_lock, current->pid);
-			int writelock = pidarray_contains(d->pid_write_lock, current->pid);
+			int readlock = in_pid_array(d->pid_read_lock, current->pid);
+			int writelock = in_pid_array(d->pid_write_lock, current->pid);
 
 			osp_spin_lock(lock);
-			// Invalid if file hasn't locked ramdisk
 			
 			if (readlock) 
-				pidarray_remove(&d->pid_read_lock, current->pid);
+				remove_from_pid_array(&d->pid_read_lock, current->pid);
 			if (writelock) 
-				pidarray_remove(&d->pid_write_lock, current->pid);
+				remove_from_pid_array(&d->pid_write_lock, current->pid);
 
 			if (!readlock && !writelock) {
 				osp_spin_unlock(lock);
 				return -EINVAL;
 			}
 			
-			// Clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
 			if (readlock == NULL && writelock == NULL) {
 				filp->f_flags &= !F_OSPRD_LOCKED;
 			}
@@ -230,12 +340,6 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 	}
 
 	return 0;
-}
-
-void unlockWakeIncrement(osprd_info_t *d) {
-	osp_spin_unlock(&(d->mutex));
-	wake_up_all(&(d->blockq));
-	increment_ticket(d);
 }
 
 /*
@@ -259,8 +363,8 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	// This line avoids compiler warnings; you may remove it.
 	(void) filp_writable, (void) d;
 
-	int readlock = pidarray_contains(d->pid_read_lock, current->pid);
-	int writelock = pidarray_contains(d->pid_write_lock, current->pid);
+	int readlock = in_pid_array(d->pid_read_lock, current->pid);
+	int writelock = in_pid_array(d->pid_write_lock, current->pid);
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
 	//printk(KERN_INFO "CMD %d\n", cmd);
@@ -300,60 +404,46 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Then, block at least until 'd->ticket_tail == local_ticket'.
 		// (Some of these operations are in a critical section and must
 		// be protected by a spinlock; which ones?)
-
 		
-		/** Ticket + check error cases **/
-		
-		// Get ticket
-		//printk(KERN_INFO "%s\n", "GETTING TICKET");
 		osp_spin_lock(&(d->mutex));
 		ticket = d->ticket_head;
 		d->ticket_head++;
 		
-		// Deadlock - if current proc already has other lock
-		//printk(KERN_INFO "%s\n", "CHECKING FOR DEADLOCK");
 		if ((writelock && !filp_writable) || (readlock && filp_writable)) {
 			unlockWakeIncrement(d);
 			return -EDEADLK;
 		}
 		
-		for_each_open_file(current, check_locks, d);
-		if (d->holdOtherLocks) {
-			d->holdOtherLocks = 0;
+		for_each_open_file(current, locks, d);
+		if (d->any_other_lock_count) {
+			d->any_other_lock_count = 0;
 			unlockWakeIncrement(d);
 			return -EDEADLK;
 		}
 
-		//printk(KERN_INFO "%s\n", "CALLING spin_unlock");
 		osp_spin_unlock(&(d->mutex));
 		
-		/** Blocking **/
 		//printk(KERN_INFO "%s\n", "CHECKING wait_event_interruptible");
-		// first argument is wait queue
-		// second argument is condition to wake
 		if (wait_event_interruptible(d->blockq, d->ticket_tail==ticket &&
 									 d->pid_write_lock->used == 0 &&
 									 (d->pid_read_lock->used == 0 || !filp_writable))) {
 			//printk(KERN_INFO "%s\n", "INSIDE wait_event_interruptible");
 			if (d->ticket_tail != ticket) 
-				ticketarray_add(&(d->exitedTickets), ticket);
-			else   // signal received
-				increment_ticket(d);
+				add_to_ticket_array(&(d->exitedTickets), ticket);
+			else  
+				ticket_to_next_process(d);
 		
 			return -ERESTARTSYS;
 		}
 		
-		/** Obtain lock **/
 		//printk(KERN_INFO "%s\n", "OBTAINING LOCK");
 		osp_spin_lock(&(d->mutex));
-		filp->f_flags |= F_OSPRD_LOCKED; // claim lock
-		
-		// keep track of the ID processes that are holding lock
-		//printk(KERN_INFO "FILP_WRITABLE %d\n", filp_writable);
+		filp->f_flags |= F_OSPRD_LOCKED; 
+
 		if (filp_writable)
-			pidarray_add(&(d->pid_write_lock), current->pid);
+			add_to_pid_array(&(d->pid_write_lock), current->pid);
 		else
-			pidarray_add(&(d->pid_read_lock), current->pid);
+			add_to_pid_array(&(d->pid_read_lock), current->pid);
 
 		unlockWakeIncrement(d);
 		return 0;
@@ -366,44 +456,37 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// block.  If OSPRDIOCACQUIRE would block or return deadlock,
 		// OSPRDIOCTRYACQUIRE should return -EBUSY.
 		// Otherwise, if we can grant the lock request, return 0.
-		
-		/** Ticket + check error cases **/
-		
-		// get ticket
+				
 		osp_spin_lock(&(d->mutex));
 		ticket = d->ticket_head;
 		d->ticket_head++;
 		
-		// Deadlock - if current proc already has complement lock
 		if ((writelock && !filp_writable) || (readlock && filp_writable)) {
 			unlockWakeIncrement(d);
 			return -EBUSY;
 		}
 		
-		// Deadlock - if current proc holds lock on different file
-		for_each_open_file(current, check_locks, d);
-		if (d->holdOtherLocks) {
-			d->holdOtherLocks = 0;
+		for_each_open_file(current, locks, d);
+		if (d->any_other_lock_count) {
+			d->any_other_lock_count = 0;
 			unlockWakeIncrement(d);
 			return -EBUSY;
 		}
 		
 		osp_spin_unlock(&(d->mutex));
 		
-		// busy if locks are held
 		if (d->pid_write_lock->used != 0 || (d->pid_read_lock->used != 0 && filp_writable)) {
-			increment_ticket(d);
-			wake_up_all(&(d->blockq)); // required??
+			ticket_to_next_process(d);
+			wake_up_all(&(d->blockq));
 			return -EBUSY;
 		}
 		
-		// Acquire lock
 		osp_spin_lock(&(d->mutex));
 		filp->f_flags |= F_OSPRD_LOCKED;
 		if (filp_writable)
-			pidarray_add(&(d->pid_write_lock), current->pid);
+			add_to_pid_array(&(d->pid_write_lock), current->pid);
 		else
-			pidarray_add(&(d->pid_read_lock), current->pid);
+			add_to_pid_array(&(d->pid_read_lock), current->pid);
 
 		unlockWakeIncrement(d);
 		return 0;
@@ -417,22 +500,19 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// the wait queue, perform any additional accounting steps
 		// you need, and return 0.
 		osp_spin_lock(&(d->mutex));
-		
-		// if file hasn't locked the ramdisk, return -EINVAL.
-		if (!pidarray_contains(d->pid_write_lock, current->pid) && !(pidarray_contains(d->pid_read_lock, current->pid))) {
+
+		if (!readlock && !writelock) {
 			osp_spin_unlock(&(d->mutex));
 			return -EINVAL;
 		}
 		
-		if (pidarray_contains(d->pid_write_lock, current->pid)) {
-			pidarray_remove(&d->pid_write_lock, current->pid);
+		if (readlock) {
+			remove_from_pid_array(&d->pid_read_lock, current->pid);
+		}
+		if (writelock) {
+			remove_from_pid_array(&d->pid_write_lock, current->pid);
 		}
 		
-		if (pidarray_contains(d->pid_read_lock, current->pid)) {
-			pidarray_remove(&d->pid_read_lock, current->pid);
-		}
-		
-		// clear the lock from filp->f_flags if no processes (not just current process) hold any lock.
 		if (d->pid_read_lock->used == 0 && d->pid_write_lock->used == 0) {
 			filp->f_flags &= !F_OSPRD_LOCKED;
 		}
@@ -441,7 +521,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		wake_up_all(&(d->blockq));
 
 	} else
-		r = -ENOTTY; /* unknown command */
+		r = -ENOTTY; 
 	return r;
 }
 
@@ -454,125 +534,13 @@ static void osprd_setup(osprd_info_t *d)
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
-	pidarray_init(&d->pid_read_lock, 50);
-	pidarray_init(&d->pid_write_lock, 50);
-	ticketarray_init(&d->exitedTickets, 50);
-	d->holdOtherLocks = 0;
-}
+	/* Add code here if you add fields to osprd_info_t. */
 
-void pidarray_init(struct pidArray **a, size_t initialSize) {
-   *a = kzalloc(sizeof(struct pidArray), GFP_ATOMIC);
-  (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
-  (*a)->used = 0;
-  (*a)->size = initialSize;
+	d->any_other_lock_count = 0;
+	init_ticket_array(&d->exitedTickets, 50);	
+	init_pid_array(&d->pid_read_lock, 50);
+	init_pid_array(&d->pid_write_lock, 50);
 }
-
-void pidarray_add(struct pidArray **a, pid_t pid){
-	//printk(KERN_INFO "Adding pid %d to pidArray\n", pid);
-	if((*a)->used == (*a)->size){
-		//printk(KERN_INFO "Resizing pidArray with pid %d\n", pid);
-		(*a)->size *= 2;
-		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
-		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
-		kfree((*a)->array);
-		(*a)->array = arr;
-	}
-	(*a)->array[(*a)->used++] = pid;
-}
-
-int pidarray_contains(struct pidArray *a, pid_t pid){
-	//printk(KERN_INFO "Checking for pid %d in pidArray\n", pid);
-	int i;
-	for(i = 0; i < a->used; i++){
-		if((a->array[i]) == pid){
-			return 1;
-		}
-	}
-	return 0;
-}
-
-void pidarray_remove(struct pidArray **a, pid_t pid){
-	//printk(KERN_INFO "Removing pid %d in pidArray\n", pid);
-	int i;
-	for(i = 0; i < (*a)->used; i++){
-		if ((*a)->array[i] == pid){
-			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(int));
-			// int j;
-			// for(j = i; j < ((*a)->used)-1; j++){
-			// 	(*a)->array[j] = (*a)->array[j+1];
-			// }
-			(*a)->used--;
-		}
-	}
-}
-
-
-void ticketarray_init(struct ticketArray **a, size_t initialSize) {
-   *a = kzalloc(sizeof(struct ticketArray), GFP_ATOMIC);
-  (*a)->array = (int *)kzalloc(initialSize * sizeof(int), GFP_ATOMIC);
-  (*a)->used = 0;
-  (*a)->size = initialSize;
-}
-
-void ticketarray_add(struct ticketArray **a, pid_t pid){
-	if((*a)->used == (*a)->size){
-		(*a)->size *= 2;
-		pid_t *arr = (int *)kzalloc((*a)->size * sizeof(int), GFP_ATOMIC);
-		memcpy(arr, (*a)->array, (*a)->used * sizeof(int));
-		kfree((*a)->array);
-		(*a)->array = arr;
-	}
-	(*a)->array[(*a)->used++] = pid;
-}
-
-int ticketarray_contains(struct ticketArray *a, pid_t pid){
-	int i;
-	for(i = 0; i < a->used; i++){
-		if(a->array[i] == pid){
-			return 1;
-		}
-	}
-	return 0;
-}
-
-void ticketarray_remove(struct ticketArray **a, pid_t pid){
-	int i;
-	for(i = 0; i < (*a)->used; i++){
-		if ((*a)->array[i] == pid){
-			memmove(((*a)->array)+i, ((*a)->array)+i+1, (((*a)->used)-i-1) * sizeof(unsigned int));
-			// int j;
-			// for(j = i; j < ((*a)->used)-1; j++){
-			// 	(*a)->array[j] = (*a)->array[j+1];
-			// }
-			(*a)->used--;
-		}
-	}
-}
-
-void check_locks(struct file *filp, osprd_info_t *d) {
-	osprd_info_t *otherDisk;
-	if ((otherDisk = file2osprd(filp)) != NULL) {
-		if (pidarray_contains(otherDisk->pid_read_lock, current->pid) || pidarray_contains(otherDisk->pid_write_lock, current->pid)) {
-			d->holdOtherLocks = 1;
-			return;
-		}
-	}
-}
-
-void increment_ticket(osprd_info_t *d) {
-	while (++(d->ticket_tail)) {//without this, program will be paused
-		//if some processes already died and can't handle the ticket.
-		//we make sure only pass the alive ticket to alive processes.
-		if (!ticketarray_contains(d->exitedTickets, d->ticket_tail)) {
-			break; //good. The next process is still alive to accept this ticket.
-		}
-		else {
-			//no one hanles this ticket.
-			ticketarray_remove(&(d->exitedTickets), d->ticket_tail);
-		}
-	}
-}
-//our functions end
 
 
 /*****************************************************************************/
