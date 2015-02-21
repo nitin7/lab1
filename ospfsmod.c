@@ -765,7 +765,58 @@ remove_block(ospfs_inode_t *oi)
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+	int32_t indirect_i, direct_i;
+	uint32_t *indirect_b, *indirect2_b;
+	if (n < 0)
+		return -EIO;
+
+	if (n == 0)
+		return 0;
+
+	if(indir_index(n) == -1) {  
+		if(oi->oi_indirect == 0)
+			return -EIO;
+		direct_i = direct_index(n);
+		indirect_b = ospfs_block(oi->oi_indirect);
+		indirect_b[direct_i] = 0;
+		free_block (n);
+
+		if(direct_i == 0) {
+			free_block(oi->oi_indirect);
+			oi->oi_indirect = 0;
+		}
+	} else if(indir2_index(n) != 0) {   
+		direct_i = direct_index(n);
+		indirect_i = indir_index(n);
+
+		if(indirect2_b[indirect_i] == 0)
+			return -EIO;
+		indirect_b = ospfs_block(indirect2_b[indirect_i]);
+
+		if(oi->oi_indirect2 == 0)
+			return -EIO;
+		indirect2_b = ospfs_block(oi->oi_indirect2);
+
+		indirect_b[direct_i] = 0;
+		free_block(n);
+
+		if(indirect_i == 0) {
+			free_block(oi->oi_indirect2);
+			oi->oi_indirect2 = 0;
+		}
+		if(direct_i == 0) {
+			free_block(indirect2_b[indirect_i]);
+			indirect2_b[indirect_i] = 0;	
+		}
+
+	} else {
+		oi->oi_direct[n] = 0;
+		free_block(n);
+	}
+
+	// update the oi->oi_size field
+	oi->oi_size -= OSPFS_BLKSIZE;
+	return 0;
 }
 
 
