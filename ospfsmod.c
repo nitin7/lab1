@@ -324,7 +324,7 @@ ospfs_delete_dentry(struct dentry *dentry)
 	return 1;
 }
 
-
+//NITIN
 /*****************************************************************************
  * DIRECTORY OPERATIONS
  *
@@ -549,6 +549,7 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 //   You can use the functions bitvector_set(), bitvector_clear(), and
 //   bitvector_test() to do bit operations on the map.
 
+//ISHAN
 static uint32_t
 allocate_block(void)
 {
@@ -568,6 +569,7 @@ allocate_block(void)
 //   number isn't obviously bogus: the boot sector, superblock, free-block
 //   bitmap, and inode blocks must never be freed.  But this is not required.)
 
+//NITIN
 static void
 free_block(uint32_t blockno)
 {
@@ -604,6 +606,7 @@ free_block(uint32_t blockno)
 //
 // EXERCISE: Fill in this function.
 
+//ISHAN
 static int32_t
 indir2_index(uint32_t b)
 {
@@ -623,6 +626,7 @@ indir2_index(uint32_t b)
 //
 // EXERCISE: Fill in this function.
 
+//NITIN
 static int32_t
 indir_index(uint32_t b)
 {
@@ -640,6 +644,7 @@ indir_index(uint32_t b)
 //
 // EXERCISE: Fill in this function.
 
+//ISHAN
 static int32_t
 direct_index(uint32_t b)
 {
@@ -679,6 +684,7 @@ direct_index(uint32_t b)
 //     indirect blocks.
 //  3) update the oi->oi_size field
 
+//ISHAN
 static int
 add_block(ospfs_inode_t *oi)
 {
@@ -715,6 +721,7 @@ add_block(ospfs_inode_t *oi)
 // you set the block pointer to 0.  Don't leave pointers to
 // deallocated blocks laying around!
 
+//ISHAN
 static int
 remove_block(ospfs_inode_t *oi)
 {
@@ -762,6 +769,7 @@ remove_block(ospfs_inode_t *oi)
 //
 //   EXERCISE: Finish off this function.
 
+//NITIN
 static int
 change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
@@ -789,6 +797,7 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 //	OSPFS only pays attention to file size changes (see change_size above).
 //	We have written this function for you -- except for file quotas.
 
+//NITIN
 static int
 ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 {
@@ -835,6 +844,7 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 //
 //   EXERCISE: Complete this function.
 
+//ISHAN
 static ssize_t
 ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 {
@@ -895,6 +905,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 //
 //   EXERCISE: Complete this function.
 
+//ISHAN
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
@@ -997,6 +1008,7 @@ find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen)
 //
 // EXERCISE: Write this function.
 
+//NITIN
 static ospfs_direntry_t *
 create_blank_direntry(ospfs_inode_t *dir_oi)
 {
@@ -1040,6 +1052,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 //
 //   EXERCISE: Complete this function.
 
+//NITIN
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	/* EXERCISE: Your code here. */
@@ -1075,6 +1088,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 //
 //   EXERCISE: Complete this function.
 
+//NITIN
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
@@ -1118,6 +1132,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 //
 //   EXERCISE: Complete this function.
 
+//ISHAN
 static int
 ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
