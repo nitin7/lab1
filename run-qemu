@@ -19,8 +19,12 @@ function find_readable_dir() {
     return 1
 }
 
+function mywhich() {
+    which "$1" 2>&1 | grep -v '^\(which: \)*no' >/dev/null && which "$1" 2>/dev/null | grep . >/dev/null
+}
+
 make=make
-if which gmake 2>&1 | grep -v '^\(which: \)*no' >/dev/null && which gmake 2>/dev/null | grep . >/dev/null; then
+if mywhich gmake; then
     make=gmake
 fi
 
@@ -145,6 +149,12 @@ function myrun() {
     "$@"
 }
 
+function myrunbg() {
+    test $verbose = y && echo '+' "$@" "&" 1>&2
+    "$@" &
+    echo "$!"
+}
+
 function myrunquiet() {
     if [ $verbose = y ]; then
 	echo '+' "$@" 1>&2
@@ -177,12 +187,15 @@ function run_iso() {
 
     TMPFILE="$tmpdir/lab.iso"
     ( uname | grep -i cygwin >/dev/null 2>&1 ) && TMPFILE=`cygpath -w $TMPFILE`
+    
+    $make tarball-nocheck || exit 1
+    mv lab3-${USER}.tar.gz labstuff.tgz
 
     mkisofsarg=
     if [ -r .mkisofs ]; then
 	mkisofsarg=`cat .mkisofs`
     fi
-    myrunquiet mkisofs -R -iso-level 3 -o $TMPFILE -m CVS -m .svn -m '*.tar.gz' -m '*.qcow2' -m '*.qvm' -m '*.ko' -m '*.o' -m '*.img' -m '*.iso' $mkisofsarg .
+    myrunquiet mkisofs -R -iso-level 3 -o $TMPFILE $mkisofsarg labstuff.tgz setup-in-qemu
 
     [ -z "$fdax" ] && fda="-fda $TMPFILE"
     "$qemu_bin" -help | grep -e -no-kqemu >/dev/null 2>&1 && qopt="$qopt -no-kqemu"
@@ -191,8 +204,24 @@ function run_iso() {
 }
 
 function mk_tmp_tarball() {
-    $make tarball || exit 1
-    mv lab2-${USER}.tar.gz "$tmpdir/lab.tar.gz"
+    $make tarball-nocheck || exit 1
+    mv lab3-${USER}.tar.gz "$tmpdir/lab.tar.gz"
+}
+
+function reloader() {
+    if [ -t 0 ]; then
+	sleep 2
+	while read -p "Enter 'r' here to rebuild code for qemu: " line; do
+	    if expr "$line" : "[Rr].*" >/dev/null 2>&1; then
+		mk_tmp_tarball
+		echo "*** Code rebuilt." 1>&2
+		echo "*** Now type 'reload' in the qemu shell." 1>&2
+		echo 1>&2
+	    elif expr "$line" : "[Qq].*" >/dev/null 2>&1; then
+		exit 1
+	    fi
+	done
+    fi
 }
 
 function run_net() {
@@ -205,64 +234,45 @@ function run_net() {
     mk_tmp_tarball
 
     "$qemu_bin" -help | grep -e -no-kqemu >/dev/null 2>&1 && qopt="$qopt -no-kqemu"
-    myrun "$qemu_bin" $qopt $bsw $biosdir $hda $hdb $hdc $hdd $fda $fdb $loadvm -tftp "$tmpdir" -redir tcp:2222::22
+    reloader | myrun "$qemu_bin" $qopt $bsw $biosdir $hda $hdb $hdc $hdd $fda $fdb $loadvm -tftp "$tmpdir" -redir tcp:2222::22
     exit $?
 }
 
 
-if uname | grep -i Darwin >/dev/null 2>&1; then
-    # Mac OS X
-    if [ -z "$hda$hdc" ]; then
-	cs111d=`find_readable_dir cs111.iso "$1" "$HOME" "$HOME/Documents/QEMU" "."`
-	[ -n "$cs111d" -a -r "$cs111d/cs111.iso" -a -z "$hdc" ] && hdc="-cdrom $cs111d/cs111.iso"
-	[ -n "$cs111d" -a -r "$cs111d/cs111snap.qcow2" -a -z "$hda" ] && hda="-hda $cs111d/cs111snap.qcow2"
-	[ -z "$hdc" -a -n "$1" -a -r "$1" ] && hdc="-cdrom $1"
-	[ -z "$hda" -a -n "$2" -a -r "$2" ] && hda="-hda $2"
-	[ -z "$hda$hdc" ] && die "Can't find cs111.iso!  Please run me as follows: './run-qemu DIR',
-where DIR is the location of the directory containing cs111.iso."
-    fi
-    [ -f osprd.c ] || die "Not a Lab 2 directory!"
-
+expected_qemu=qemu
+if mywhich qemu; then
+    qemudir=`which qemu | sed 's;/qemu$;/;' | sed 's;/bin/$;/;'`
+elif [ -x "/Applications/Q.app/Contents/MacOS/i386-softmmu.app/Contents/MacOS/i386-softmmu" ]; then
     expected_qemu="/Applications/Q.app/Contents/MacOS/i386-softmmu.app/Contents/MacOS/i386-softmmu"
-    if [ ! -x $expected_qemu ]; then
-	die "Can't figure out how to run Q!"
-    fi
-
-    if which mkisofs 2>&1 | grep -v '^\(which: \)*no' >/dev/null && [ -x $expected_qemu ]; then
-	if echo "$method" | grep i >/dev/null 2>&1; then
-	    run_iso "$expected_qemu"
-	fi
-    fi
-    run_net "$expected_qemu"
+    qemudir="/doesnotexist/"
 else
-    # Linux / Cygwin
-    which qemu > /dev/null || die 'Cannot find a qemu executable!  Fix your $PATH environment variable,
-or (if using the lab machines), verify you'"'"'re booted into the CS111 partition.'
-
-    qemudir=`which qemu | sed 's;/qemu$;;' | sed 's;bin$;;'`
-
-    if [ -z "$hda$hdc" ]; then
-	cs111d=`find_readable_dir cs111.iso "$1" "$HOME" "${qemudir}share/qemu" "${qemudir}share" "${qemudir}" "." ".."`
-	[ -n "$cs111d" -a -r "$cs111d/cs111.iso" -a -z "$hdc" ] && hdc="-cdrom $cs111d/cs111.iso"
-	[ -n "$cs111d" -a -r "$cs111d/cs111snap.qcow2" -a -z "$hda" ] && hda="-hda $cs111d/cs111snap.qcow2"
-	[ -z "$hdc" -a -n "$1" -a -r "$1" ] && hdc="-cdrom $1"
-	[ -z "$hda" -a -n "$2" -a -r "$2" ] && hda="-hda $2"
-	[ -z "$hda$hdc" ] && die "Can't find cs111.iso!  Please run me as follows: './run-qemu DIR',
-where DIR is the location of the directory containing cs111.iso."
-    fi
-    [ -f osprd.c ] || die "Not a Lab 2 directory!"
-
-    biosdir=
-    if uname | grep -i cygwin >/dev/null 2>&1; then
-	qemudir=`cygpath -w $qemudir`
-	debospimg=`cygpath -w $debospimg`
-	biosdir="$qemudir"
-    fi
-
-    if which mkisofs 2>&1 | grep -v '^\(which: \)*no' >/dev/null && which mkisofs 2>/dev/null | grep . >/dev/null; then
-	if echo "$method" | grep i >/dev/null 2>&1; then
-	    run_iso qemu "$biosdir"
-	fi
-    fi
-    run_net qemu "$biosdir"
+    die 'Can'"'"'t find a qemu executable!  Fix your $PATH environment variable.
+If using the lab machines or lnxsrv, verify that /u/cs/class/cs111/cbin/bin
+is in your $PATH.
+Current PATH='"$PATH"
 fi
+
+if [ -z "$hda$hdc" ]; then
+    cs111d=`find_readable_dir cs111.iso "$1" "$HOME" "$HOME/Documents/QEMU" "${qemudir}share/qemu" "${qemudir}share" "${qemudir}" "/u/cs/class/cs111/cbin/share" "." ".."`
+    [ -n "$cs111d" -a -r "$cs111d/cs111.iso" -a -z "$hdc" ] && hdc="-cdrom $cs111d/cs111.iso"
+    [ -n "$cs111d" -a -r "$cs111d/cs111snap.qcow2" -a -z "$hda" ] && hda="-hda $cs111d/cs111snap.qcow2"
+    [ -z "$hdc" -a -n "$1" -a -r "$1" ] && hdc="-cdrom $1"
+    [ -z "$hda" -a -n "$2" -a -r "$2" ] && hda="-hda $2"
+    [ -z "$hda$hdc" ] && die "Can't find cs111.iso!  Please run me as follows: './run-qemu DIR',
+where DIR is the location of the directory containing cs111.iso."
+fi
+[ -f ospfsmod.c ] || die "Not a Lab 3 directory!"
+
+biosdir=
+if uname | grep -i cygwin >/dev/null 2>&1; then
+    qemudir=`cygpath -w $qemudir`
+    debospimg=`cygpath -w $debospimg`
+    biosdir="$qemudir"
+fi
+
+if mywhich mkisofs; then
+    if echo "$method" | grep i >/dev/null 2>&1; then
+	run_iso "$expected_qemu" "$biosdir"
+    fi
+fi
+run_net "$expected_qemu" "$biosdir"
