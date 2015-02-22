@@ -895,7 +895,7 @@ remove_block(ospfs_inode_t *oi)
 	if (n == 0)
 		return 0;
 
-	if(indir_index(n) == -1) {  
+	if(indir_index(n) != -1) {  
 		if(oi->oi_indirect == 0)
 			return -EIO;
 		direct_i = direct_index(n);
@@ -907,7 +907,7 @@ remove_block(ospfs_inode_t *oi)
 			free_block(oi->oi_indirect);
 			oi->oi_indirect = 0;
 		}
-	} else if(indir2_index(n) != 0) {   
+	} else if(indir2_index(n) == 0) {   
 		direct_i = direct_index(n);
 		indirect_i = indir_index(n);
 
