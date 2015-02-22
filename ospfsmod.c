@@ -453,7 +453,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 *
 		 * EXERCISE: Your code here */
 		 uint32_t oisize = dir_oi->oi_size;
-		if (oisize < f_pos * OSPFS_DIRENTRY_SIZE) { 
+		if (oisize*OSPFS_DIRENTRY_SIZE < f_pos) { 
 			r = 1;
 			break;
 		}
@@ -481,22 +481,22 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		/* EXERCISE: Your code here */
 		od = ospfs_inode_data(dir_oi, f_pos * OSPFS_DIRENTRY_SIZE);
 		entry_oi = ospfs_inode(od->od_ino);
+
+		uint32_t typen = DT_REG;
 		if(entry_oi != 0) {
 			uint32_t type = entry_oi->oi_ftype;
 			if (type == OSPFS_FTYPE_REG){
-				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_REG);
-				break;
-			}else if (type == OSPFS_FTYPE_DIR){
-				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_DIR);
-				break;
+				typen = DT_REG;
 			}else if (type == OSPFS_FTYPE_SYMLINK){
-				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_LNK);
-				break;
+				typen = DT_LINK;
+			}else if (type == OSPFS_FTYPE_DIR){
+				typen = DT_DIR;
 			}else{
 				eprintk("Error\n"); 
-				r=1; 
+				r = 1; 
 				continue;
 			}
+			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, typen);
 		}
 		f_pos++;
 	}
@@ -602,7 +602,10 @@ free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
 	void *bitmap = ospfs_block(OSPFS_FREEMAP_BLK);
-	if (blockno > ((ospfs_super->os_ninodes)/OSPFS_BLKINODES + (ospfs_super->os_firstinob)))
+	uint32_t num_inodes = ospfs_super->os_ninodes;
+	uint32_t first_ib = ospfs_super->os_firstinob
+	uint32_t block = (num_inodes/OSPFS_BLKINODES) + first_ib;
+	if (blockno > block)
 		bitvector_set(bitmap, blockno);
 	return;
 }
