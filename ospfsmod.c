@@ -616,7 +616,7 @@ free_block(uint32_t blockno)
 	/* EXERCISE: Your code here */
 	void *bit_vector = ospfs_block(OSPFS_FREEMAP_BLK);
 	uint32_t num_inodes = ospfs_super->os_ninodes;
-	uint32_t first_ib = ospfs_super->os_firstinob
+	uint32_t first_ib = ospfs_super->os_firstinob;
 	uint32_t block = (num_inodes/OSPFS_BLKINODES) + first_ib;
 
 	if (blockno > block)
@@ -800,7 +800,7 @@ add_block(ospfs_inode_t *oi)
 		if (!dir_block)
 			return -ENOSPC;
 
-		oi->oi_direct[n] = dirBlock;
+		oi->oi_direct[n] = dir_block;
 	}
 	else if (n < OSPFS_NDIRECT + OSPFS_NINDIRECT) {
 		// allocate new indirect block if necessary
@@ -983,7 +983,8 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
 	uint32_t old_size = oi->oi_size;
 	int r = 0;
-
+	
+	int ret = 0;
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) {
 	        /* EXERCISE: Your code here */
 		ret = add_block(oi);
@@ -1008,7 +1009,7 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
 	oi->oi_size = new_size;
-	rreturn 0;
+	return 0;
 }
 
 
@@ -1329,8 +1330,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 
 	if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
         return -ENAMETOOLONG;
-	if (find_direntry(dir_i),
-		dst_dentry->d_name.name, dst_dentry->d_name.len))
+	if (find_direntry(dir_i, dst_dentry->d_name.name, dst_dentry->d_name.len))
 		return -EEXIST;
 	dir_entry = create_blank_direntry(dir_i);
 	if (IS_ERR(dir_entry))
@@ -1527,10 +1527,10 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 
 	int i = strchr(oi->oi_symlink, ':') - oi->oi_symlink;
 	int check = strncmp(oi->oi_symlink, "root?", 5) == 0;
-	if (check && current->uid != 0)
+	if (check && (current->uid != 0))
 		nd_set_link(nd, oi->oi_symlink + i + 1);
 
-	if (check && current->uid == 0){
+	if (check && (current->uid == 0)){
 		oi->oi_symlink[i] = '\0';
 		nd_set_link(nd, oi->oi_symlink + 6); 
 	}
