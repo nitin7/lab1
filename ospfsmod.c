@@ -1339,13 +1339,23 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 //   (hint: Should the given form be changed in any way to make this method
 //   easier?  With which character do most functions expect C strings to end?)
 
+//DONE:NITIN
 static void *
 ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
 	// Exercise: Your code here.
+	int i = strchr(oi->oi_symlink, ':') - oi->oi_symlink;
+	int check = strncmp(oi->oi_symlink, "root?", 5) == 0;
+	if (check && current->uid != 0)
+		nd_set_link(nd, oi->oi_symlink + i + 1);
 
+	if (check && current->uid == 0){
+		oi->oi_symlink[i] = '\0';
+		nd_set_link(nd, oi->oi_symlink + 6); 
+	}
+	
 	nd_set_link(nd, oi->oi_symlink);
 	return (void *) 0;
 }
