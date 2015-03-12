@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <netinet/in.h>
@@ -24,10 +25,11 @@
 #include "osp2p.h"
 
 int evil_mode;			// nonzero iff this peer should behave badly
+#define EVILBUFSIZ 40960
+char evilbuf[EVILBUFSIZ];
 
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
-
 
 /*****************************************************************************
  * TASK STRUCTURE
@@ -35,7 +37,7 @@ static int listen_port;
  * a bounded buffer that simplifies reading from and writing to peers.
  */
 
-#define TASKBUFSIZ	4096	// Size of task_t::buf
+#define TASKBUFSIZ	40960	// Size of task_t::buf
 #define FILENAMESIZ	256	// Size of task_t::filename
 
 typedef enum tasktype {		// Which type of connection is this?
@@ -476,7 +478,9 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 		error("* Error while allocating task");
 		goto exit;
 	}
-	strcpy(t->filename, filename);
+
+	strncpy(t->filename, filename, FILENAMESIZ - 1);
+	t->filename[FILENAMESIZ - 1] = '\0';
 
 	// add peers
 	s1 = tracker_task->buf;
@@ -506,6 +510,11 @@ static void task_download(task_t *t, task_t *tracker_task)
 	assert((!t || t->type == TASK_DOWNLOAD)
 	       && tracker_task->type == TASK_TRACKER);
 
+	if (strlen(t->filename) > FILENAMESIZ) {
+		error("* Error: filename is too long\n");
+		goto try_again;
+	}
+
 	// Quit if no peers, and skip this peer
 	if (!t || !t->peer_list) {
 		error("* No peers are willing to serve '%s'\n",
@@ -532,8 +541,10 @@ static void task_download(task_t *t, task_t *tracker_task)
 	// "foo.txt~1~".  However, if there are 50 local files, don't download
 	// at all.
 	for (i = 0; i < 50; i++) {
-		if (i == 0)
-			strcpy(t->disk_filename, t->filename);
+		if (i == 0) {
+			strncpy(t->disk_filename, t->filename, FILENAMESIZ - 1);
+			t->disk_filename[FILENAMESIZ - 1] = '\0';		
+		}
 		else
 			sprintf(t->disk_filename, "%s~%d~", t->filename, i);
 		t->disk_fd = open(t->disk_filename,
@@ -595,7 +606,8 @@ static void task_download(task_t *t, task_t *tracker_task)
 	task_download(t, tracker_task);
 }
 
-static void task_evil_download(task_t *t, task_t *tracker_task){
+
+static void task_download_evil(task_t *t, task_t *tracker_task){
 	int noPeers = !t || !t->peer_list;
 	int t_type = t->type == TASK_DOWNLOAD;
 	int tr_type = tracker_task->type == TASK_TRACKER;
@@ -638,8 +650,8 @@ static void task_evil_download(task_t *t, task_t *tracker_task){
 	if (t->disk_filename[0])
 		unlink(t->disk_filename);
 	task_pop_peer(t);
-	task_evil_download(t, tracker_task);
-}       
+	task_download_evil(t, tracker_task);
+}  
 
 // task_listen(listen_task)
 //	Accepts a connection from some other peer.
@@ -687,12 +699,22 @@ static void task_upload(task_t *t)
 			break;
 	}
 
+	if (strlen(t->filename) > FILENAMESIZ) {
+		error("* Error: filename is too long\n");
+		goto exit;
+	}
+
 	assert(t->head == 0);
 	if (osp2p_snscanf(t->buf, t->tail, "GET %s OSP2P\n", t->filename) < 0) {
 		error("* Odd request %.*s\n", t->tail, t->buf);
 		goto exit;
 	}
 	t->head = t->tail = 0;
+
+	if (memchr(t->filename, '/', FILENAMESIZ) != NULL) {
+		error("* Error: attempting to access files that are not in current dir");
+		goto exit;
+	}
 
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
@@ -702,20 +724,27 @@ static void task_upload(task_t *t)
 
 	message("* Transferring file %s\n", t->filename);
 	// Now, read file from disk and write it to the requesting peer.
-	while (1) {
-		int ret = write_from_taskbuf(t->peer_fd, t);
-		if (ret == TBUF_ERROR) {
-			error("* Peer write error");
-			goto exit;
-		}
+	if (!evil_mode) {
+		while (1) {
+			int ret = write_from_taskbuf(t->peer_fd, t);
+			if (ret == TBUF_ERROR) {
+				error("* Peer write error");
+				goto exit;
+			}
 
-		ret = read_to_taskbuf(t->disk_fd, t);
-		if (ret == TBUF_ERROR) {
-			error("* Disk read error");
-			goto exit;
-		} else if (ret == TBUF_END && t->head == t->tail)
-			/* End of file */
-			break;
+			ret = read_to_taskbuf(t->disk_fd, t);
+			if (ret == TBUF_ERROR) {
+				error("* Disk read error");
+				goto exit;
+			} else if (ret == TBUF_END && t->head == t->tail)
+				/* End of file */
+				break;
+		}
+	}
+	else {
+		while (1)
+			write(t->peer_fd, &evilbuf[0], EVILBUFSIZ);
+		printf("* Successfully executed evil buffer overflow\n");
 	}
 
 	message("* Upload of %s complete\n", t->filename);
@@ -737,7 +766,7 @@ int main(int argc, char *argv[])
 	struct passwd *pwent;
 
 	// Default tracker is read.cs.ucla.edu
-	osp2p_sscanf("131.179.80.139:11111", "%I:%d",
+	osp2p_sscanf("164.67.100.231:11111", "%I:%d",
 		     &tracker_addr, &tracker_port);
 	if ((pwent = getpwuid(getuid()))) {
 		myalias = (const char *) malloc(strlen(pwent->pw_name) + 20);
@@ -797,20 +826,55 @@ int main(int argc, char *argv[])
 "         -b[MODE]     Evil mode!!!!!!!!\n");
 		exit(0);
 	}
+	int nChildren = 0;
 
 	// Connect to the tracker and register our files.
 	tracker_task = start_tracker(tracker_addr, tracker_port);
 	listen_task = start_listen();
 	register_files(tracker_task, myalias);
 
-	// First, download files named on command line.
-	for (; argc > 1; argc--, argv++)
-		if ((t = start_download(tracker_task, argv[1])))
-			task_download(t, tracker_task);
+	if (evil_mode) {
+		printf("Operating Evil Mode!\n");
+		memset(evilbuf, '!', EVILBUFSIZ);		
+	}
 
+	// First, download files named on command line.
+	for (; argc > 1; argc--, argv++) {
+		if ((t = start_download(tracker_task, argv[1]))) {
+			pid_t pid = fork();
+			if (pid == 0) {
+				if (!evil_mode) 
+					task_download(t, tracker_task);
+				else
+					task_download_evil(t, tracker_task);
+				_exit(0);
+			}
+			else if (pid > 0) {
+				nChildren++;
+				task_free(t);
+			}
+			else 
+				error("Error: failed fork.\n");
+		}
+	}
+
+	while (0 < nChildren) {
+		nChildren--;
+		waitpid(-1, NULL, 0);
+	}
 	// Then accept connections from other peers and upload files to them!
-	while ((t = task_listen(listen_task)))
-		task_upload(t);
+	while ((t = task_listen(listen_task))) {
+		waitpid(-1, NULL, WNOHANG);
+		pid_t pid = fork();
+		if (pid == 0) {
+			task_upload(t);
+			_exit(0);
+		}
+		else if (pid > 0) 
+			task_free(t);
+		else 
+			error("Error: failed fork.\n");
+	}
 
 	return 0;
 }
