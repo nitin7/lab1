@@ -35,6 +35,13 @@ Email:
 #    are they attacks?  (~3-10 sentences each)
 
 # Extra credit problems
-#Extra credit problem: none
+#Extra credit problem: 1
+We finished the extra credit by checking for the MD5 checksum every time that 
+a client connects to the tracker. In this way, we were able to detect corruption.
+Specifically, we compared the checksum received from the tracker with the 
+checksum of the downloaded file. If these were not equal, then the next download
+will start to occur from the next peer. We made this feature easy to switch on by 
+simply uncommenting the definition MD5_CHECKING in the beginning of osppeer.c:
+//#define MD5_CHECKING 
 
 # Add any other information you'd like us to know below this line.

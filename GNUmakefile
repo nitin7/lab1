@@ -24,14 +24,14 @@ run-good: osppeer
 	@echo + mkdir test
 	@mkdir test
 	@echo + ./osppeer -dtest -t11112 cat1.jpg cat2.jpg cat3.jpg
-	@./osppeer -dtest -t11112 cat1.jpg cat2.jpg cat3.jpg
+	@./osppeer -dtest -t12998 cat1.jpg cat2.jpg cat3.jpg
 
 run-slow: osppeer
 	@-/bin/rm -rf test
 	@echo + mkdir test
 	@mkdir test
 	@echo + ./osppeer -dtest -t11113 cat1.jpg cat2.jpg cat3.jpg
-	@./osppeer -dtest -t11113 cat1.jpg cat2.jpg cat3.jpg
+	@./osppeer -dtest -t12999 cat1.jpg cat2.jpg cat3.jpg
 
 run-bad: osppeer
 	@-/bin/rm -rf test
@@ -45,7 +45,7 @@ run-popular: osppeer
 	@echo + mkdir test
 	@mkdir test
 	@echo + ./osppeer -dtest -t11115 cat1.jpg cat2.jpg cat3.jpg
-	@./osppeer -dtest -t11115 cat1.jpg cat2.jpg cat3.jpg
+	@./osppeer -dtest -t13000 cat1.jpg cat2.jpg cat3.jpg
 
 clean:
 	-rm -f *.o *~ osptracker osptracker.cc osppeer
